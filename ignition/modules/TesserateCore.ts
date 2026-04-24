@@ -14,7 +14,7 @@ const TesserateCoreModule = buildModule("TesserateCoreModule", (m) => {
   const yieldRightNFT = m.contract("YieldRightNFT", [owner]);
   const tesserateGovernanceToken = m.contract("TesserateGovernanceToken", [owner, owner]);
   const tgtStaking = m.contract("TGTStaking", [tesserateGovernanceToken, owner]);
-  const simpleTgtDao = m.contract("SimpleTgtDao", [
+  const tgtDao = m.contract("TgtDao", [
     tgtStaking,
     owner,
     daoVotingDelay,
@@ -34,7 +34,7 @@ const TesserateCoreModule = buildModule("TesserateCoreModule", (m) => {
     yieldRightNFT,
     tesserateGovernanceToken,
     tgtStaking,
-    simpleTgtDao,
+    tgtDao,
     chainlinkPriceOracle,
     escrowVault,
   };

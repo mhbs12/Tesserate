@@ -24,13 +24,13 @@ describe("TGT Staking", function () {
   });
 });
 
-describe("Simple TGT DAO", function () {
+describe("TGT DAO", function () {
   it("creates, votes and executes a successful proposal", async function () {
     const [deployer, alice, bob] = await ethers.getSigners();
 
     const token = await ethers.deployContract("TesserateGovernanceToken", [deployer.address, deployer.address]);
     const staking = await ethers.deployContract("TGTStaking", [await token.getAddress(), deployer.address]);
-    const dao = await ethers.deployContract("SimpleTgtDao", [
+    const dao = await ethers.deployContract("TgtDao", [
       await staking.getAddress(),
       deployer.address,
       0n,
@@ -69,7 +69,7 @@ describe("Simple TGT DAO", function () {
 
     const token = await ethers.deployContract("TesserateGovernanceToken", [deployer.address, deployer.address]);
     const staking = await ethers.deployContract("TGTStaking", [await token.getAddress(), deployer.address]);
-    const dao = await ethers.deployContract("SimpleTgtDao", [
+    const dao = await ethers.deployContract("TgtDao", [
       await staking.getAddress(),
       deployer.address,
       0n,
