@@ -1,0 +1,43 @@
+import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
+
+const TesserateCoreModule = buildModule("TesserateCoreModule", (m) => {
+  const owner = m.getAccount(0);
+  const priceFeed = m.getParameter("priceFeed");
+  const aavePool = m.getParameter("aavePool");
+  const maxPriceAge = m.getParameter("maxPriceAge", 86_400n);
+  const daoVotingDelay = m.getParameter("daoVotingDelay", 0n);
+  const daoVotingPeriod = m.getParameter("daoVotingPeriod", 259_200n);
+  const daoProposalThreshold = m.getParameter("daoProposalThreshold", 1_000n * 10n ** 18n);
+  const daoQuorumBps = m.getParameter("daoQuorumBps", 2_000n);
+
+  const guaranteeNFT = m.contract("GuaranteeNFT", [owner]);
+  const yieldRightNFT = m.contract("YieldRightNFT", [owner]);
+  const tesserateGovernanceToken = m.contract("TesserateGovernanceToken", [owner, owner]);
+  const tgtStaking = m.contract("TGTStaking", [tesserateGovernanceToken, owner]);
+  const simpleTgtDao = m.contract("SimpleTgtDao", [
+    tgtStaking,
+    owner,
+    daoVotingDelay,
+    daoVotingPeriod,
+    daoProposalThreshold,
+    daoQuorumBps,
+  ]);
+  const chainlinkPriceOracle = m.contract("ChainlinkPriceOracle", [owner, maxPriceAge]);
+  const escrowVault = m.contract("EscrowVault", [guaranteeNFT, yieldRightNFT, priceFeed, aavePool]);
+
+  m.call(guaranteeNFT, "setEscrowVault", [escrowVault]);
+  m.call(yieldRightNFT, "setEscrowVault", [escrowVault]);
+  m.call(escrowVault, "setGovernanceToken", [tesserateGovernanceToken]);
+
+  return {
+    guaranteeNFT,
+    yieldRightNFT,
+    tesserateGovernanceToken,
+    tgtStaking,
+    simpleTgtDao,
+    chainlinkPriceOracle,
+    escrowVault,
+  };
+});
+
+export default TesserateCoreModule;
