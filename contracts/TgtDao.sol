@@ -9,7 +9,7 @@ interface IStakingVotingPower {
     function totalStaked() external view returns (uint256);
 }
 
-contract SimpleTgtDao is Ownable, ReentrancyGuard {
+contract TgtDao is Ownable, ReentrancyGuard {
     enum ProposalState {
         Pending,
         Active,
