@@ -98,14 +98,14 @@ Contratos deployados na Base Sepolia:
 
 | Contrato | Endereco | Explorer |
 | --- | --- | --- |
-| `ChainlinkPriceOracle` | `0x35Dae762A79b9c2CF1A0b8E26A06F6f874DCb295` | [BaseScan](https://sepolia.basescan.org/address/0x35Dae762A79b9c2CF1A0b8E26A06F6f874DCb295) |
-| `GuaranteeNFT` | `0x222c7724AB395247cd6193C7085Ef1781773c2d3` | [BaseScan](https://sepolia.basescan.org/address/0x222c7724AB395247cd6193C7085Ef1781773c2d3) |
-| `TesserateGovernanceToken` | `0xE3f61F1D7A422BA937E7E810fa1dB832201e828C` | [BaseScan](https://sepolia.basescan.org/address/0xE3f61F1D7A422BA937E7E810fa1dB832201e828C) |
-| `YieldRightNFT` | `0xa4F39C01853362B9b942C68358960BF58BBf7BC6` | [BaseScan](https://sepolia.basescan.org/address/0xa4F39C01853362B9b942C68358960BF58BBf7BC6) |
-| `TGTStaking` | `0xe963FA6647e02848cDfbF26395a5eAA4f72343D2` | [BaseScan](https://sepolia.basescan.org/address/0xe963FA6647e02848cDfbF26395a5eAA4f72343D2) |
-| `TestTgtFaucet` | `0x0A29Eb9b4F4bFA5B1dC3A3AF6cAD4D7F42c04856` | [BaseScan](https://sepolia.basescan.org/address/0x0A29Eb9b4F4bFA5B1dC3A3AF6cAD4D7F42c04856) |
-| `EscrowVault` | `0xA2768B34453bCA85D75b90D42378e0b45316C961` | [BaseScan](https://sepolia.basescan.org/address/0xA2768B34453bCA85D75b90D42378e0b45316C961) |
-| `TgtDao` | `0x213892Db5667BF2A3146160c0FFe11e06AF57D81` | [BaseScan](https://sepolia.basescan.org/address/0x213892Db5667BF2A3146160c0FFe11e06AF57D81) |
+| `ChainlinkPriceOracle` | `0x932b80193477530A109108413f1b928a2C39D413` | [BaseScan](https://sepolia.basescan.org/address/0x932b80193477530A109108413f1b928a2C39D413) |
+| `GuaranteeNFT` | `0xB0768Dca22fb3C1B4DAdAc21902C019459E4A99F` | [BaseScan](https://sepolia.basescan.org/address/0xB0768Dca22fb3C1B4DAdAc21902C019459E4A99F) |
+| `TesserateGovernanceToken` | `0xf5535cA66aedd684E782D216B2182dE480c1e0BD` | [BaseScan](https://sepolia.basescan.org/address/0xf5535cA66aedd684E782D216B2182dE480c1e0BD) |
+| `YieldRightNFT` | `0x5a172C4438E91AFa5cff5cC80d749f753eeA57e9` | [BaseScan](https://sepolia.basescan.org/address/0x5a172C4438E91AFa5cff5cC80d749f753eeA57e9) |
+| `TGTStaking` | `0x4bDFEA9Edd3Fea2F489f67Cb8D625A4fD8694b65` | [BaseScan](https://sepolia.basescan.org/address/0x4bDFEA9Edd3Fea2F489f67Cb8D625A4fD8694b65) |
+| `TestTgtFaucet` | `0x37C77bFC3CFcfE6c494954EBA56889fF3b8DD5Ec` | [BaseScan](https://sepolia.basescan.org/address/0x37C77bFC3CFcfE6c494954EBA56889fF3b8DD5Ec) |
+| `EscrowVault` | `0xFBB1E514A9ce0D201209A175936ebeb73EEB1d0D` | [BaseScan](https://sepolia.basescan.org/address/0xFBB1E514A9ce0D201209A175936ebeb73EEB1d0D) |
+| `TgtDao` | `0x47269034e3B78dF1806a63752B4CD59d96CA2Df4` | [BaseScan](https://sepolia.basescan.org/address/0x47269034e3B78dF1806a63752B4CD59d96CA2Df4) |
 
 O deploy usa Hardhat Ignition, que guarda o estado em `ignition/deployments/chain-84532`.
 Por isso, `npm run deploy:base-sepolia` reaproveita os contratos ja deployados quando o modulo
@@ -218,7 +218,7 @@ O script usa automaticamente o `TestTgtFaucet` do arquivo `ignition/deployments/
 Se existir um `FAUCET_ADDRESS` antigo no `.env`, ele sera ignorado quando houver um faucet no deploy atual. Para este deploy, o faucet correto e:
 
 ```text
-0x0A29Eb9b4F4bFA5B1dC3A3AF6cAD4D7F42c04856
+0x37C77bFC3CFcfE6c494954EBA56889fF3b8DD5Ec
 ```
 
 No frontend, abra a aba **Staking** e clique em **Claim TGT**. Depois de rodar `npm run frontend:sync:base-sepolia`, o endereco do faucet fica preenchido automaticamente.
