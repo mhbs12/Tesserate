@@ -6,24 +6,16 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 interface IStakingVotingPower {
     /// @notice Retorna quanto uma conta tem travado em staking.
-    /// @dev Exposto pelo staking, mas a TgtDao usa votingPower para aplicar maturidade de 30 dias.
+    /// @dev Exposto pelo staking, mas a TgtDao usa votingPower para aplicar maturidade.
     function stakedBalance(address account) external view returns (uint256);
 
-    /// @notice Retorna quando a conta iniciou o periodo atual de stake.
-    /// @dev Usado pela TgtDao para garantir que o stake ja era maduro no inicio da proposta.
-    function stakeStartedAt(address account) external view returns (uint256);
-
     /// @notice Retorna quanto do stake ja esta ativo para voto.
-    /// @dev So conta saldo que ficou 30 dias seguidos em stake e foi ativado no TGTStaking.
+    /// @dev So conta saldo que ficou o delay configurado em stake e foi ativado no TGTStaking.
     function votingPower(address account) external view returns (uint256);
 
     /// @notice Retorna quando o poder de voto foi ativado pela ultima vez.
     /// @dev Usado para impedir ativacao depois do inicio da proposta.
     function votingPowerActivatedAt(address account) external view returns (uint256);
-
-    /// @notice Retorna o atraso necessario para stake virar poder de voto.
-    /// @dev Usado pela TgtDao para validar a mesma janela de maturidade do staking.
-    function VOTING_POWER_DELAY() external view returns (uint256);
 
     /// @notice Retorna a base de quorum da DAO.
     /// @dev No TGTStaking atual, usa totalActiveVotingPower para evitar loops nao limitados.
@@ -186,18 +178,12 @@ contract TgtDao is Ownable, ReentrancyGuard {
     }
 
     /// @notice Vota a favor ou contra uma proposta ativa.
-    /// @dev Chamado por usuarios com TGT maduro em staking. O stake precisa ter 30 dias seguidos.
+    /// @dev Chamado por usuarios com TGT maduro e ativado antes do inicio da proposta.
     function vote(uint256 proposalId, bool support) external {
         Proposal storage proposal = _proposals[proposalId];
         require(proposal.id != 0, "Proposal not found");
         require(state(proposalId) == ProposalState.Active, "Proposal is not active");
         require(!hasVoted[proposalId][msg.sender], "Already voted");
-
-        uint256 stakeStartedAt = staking.stakeStartedAt(msg.sender);
-        require(
-            stakeStartedAt != 0 && stakeStartedAt + staking.VOTING_POWER_DELAY() <= proposal.startTime,
-            "Stake was not mature at proposal start"
-        );
 
         uint256 votingPowerActivatedAt = staking.votingPowerActivatedAt(msg.sender);
         require(

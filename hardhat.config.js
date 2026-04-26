@@ -22,6 +22,18 @@ if (process.env.SEPOLIA_RPC_URL && process.env.SEPOLIA_PRIVATE_KEY) {
   };
 }
 
+const baseSepoliaRpcUrl = process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org";
+const baseSepoliaPrivateKey = process.env.BASE_SEPOLIA_PRIVATE_KEY || process.env.SEPOLIA_PRIVATE_KEY;
+
+if (baseSepoliaPrivateKey) {
+  networks.baseSepolia = {
+    type: "http",
+    chainType: "op",
+    url: baseSepoliaRpcUrl,
+    accounts: [baseSepoliaPrivateKey],
+  };
+}
+
 const solidityProfile = {
   version: "0.8.28",
   settings: {
@@ -78,6 +90,9 @@ export default defineConfig({
   verify: {
     etherscan: {
       apiKey: configVariable("ETHERSCAN_API_KEY"),
+    },
+    blockscout: {
+      enabled: false,
     },
   },
   networks,

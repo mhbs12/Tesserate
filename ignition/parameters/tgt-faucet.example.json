@@ -1,0 +1,7 @@
+{
+  "TgtFaucetModule": {
+    "token": "0xa41940aad4AF56aa108186693839F827eCe334b9",
+    "claimAmount": "2000000000000000000000",
+    "cooldown": 86400
+  }
+}

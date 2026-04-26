@@ -10,8 +10,8 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 contract TGTStaking is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    uint256 public constant REWARD_PRECISION = 1e18;
-    uint256 public constant VOTING_POWER_DELAY = 30 days;
+    uint256 public constant REWARD_PRECISION = 1e36;
+    uint256 public immutable VOTING_POWER_DELAY;
 
     IERC20 public immutable stakingToken;
     IERC20 public immutable rewardToken;
@@ -41,15 +41,22 @@ contract TGTStaking is Ownable, ReentrancyGuard {
 
     /// @notice Configura qual ERC20 sera travado em staking e qual ERC20 sera pago como recompensa.
     /// @dev Usado no deploy com TGT como stakingToken e USDC como rewardToken.
-    constructor(address _stakingToken, address _rewardToken, address initialOwner) Ownable(initialOwner) {
+    constructor(
+        address _stakingToken,
+        address _rewardToken,
+        address initialOwner,
+        uint256 votingPowerDelay
+    ) Ownable(initialOwner) {
         require(_stakingToken != address(0), "Invalid staking token");
         require(_rewardToken != address(0), "Invalid reward token");
+        require(votingPowerDelay > 0, "Invalid voting delay");
         stakingToken = IERC20(_stakingToken);
         rewardToken = IERC20(_rewardToken);
+        VOTING_POWER_DELAY = votingPowerDelay;
     }
 
     /// @notice Trava TGT no contrato de staking.
-    /// @dev Chamado por usuarios que querem poder de voto na TgtDao. Cada novo stake reinicia os 30 dias e limpa o voto ativo.
+    /// @dev Novo stake fica pendente ate completar o delay, sem zerar o poder de voto ja ativo.
     function stake(uint256 amount) external nonReentrant {
         require(amount > 0, "Amount must be greater than 0");
 
@@ -60,7 +67,6 @@ contract TGTStaking is Ownable, ReentrancyGuard {
             _stakers.push(msg.sender);
         }
 
-        _clearActiveVotingPower(msg.sender);
         stakedBalance[msg.sender] += amount;
         stakeStartedAt[msg.sender] = block.timestamp;
         totalStaked += amount;
@@ -70,30 +76,26 @@ contract TGTStaking is Ownable, ReentrancyGuard {
     }
 
     /// @notice Retira TGT que o usuario tinha travado.
-    /// @dev Chamado pelo proprio usuario. Unstake parcial tambem reinicia os 30 dias e limpa o voto ativo do saldo restante.
+    /// @dev Retira primeiro do stake pendente. Se precisar mexer no voto ativo, reduz apenas a parte sacada.
     function unstake(uint256 amount) external nonReentrant {
         require(amount > 0, "Amount must be greater than 0");
         require(stakedBalance[msg.sender] >= amount, "Insufficient staked balance");
 
         _updateReward(msg.sender);
 
-        _clearActiveVotingPower(msg.sender);
+        _decreaseVotingPowerForUnstake(msg.sender, amount);
         stakedBalance[msg.sender] -= amount;
         totalStaked -= amount;
-        if (stakedBalance[msg.sender] == 0) {
-            stakeStartedAt[msg.sender] = 0;
-        } else {
-            stakeStartedAt[msg.sender] = block.timestamp;
-        }
         stakingToken.safeTransfer(msg.sender, amount);
 
         emit Unstaked(msg.sender, amount, stakedBalance[msg.sender], totalStaked);
     }
 
-    /// @notice Ativa o poder de voto depois de 30 dias seguidos de stake.
+    /// @notice Ativa o poder de voto depois do delay configurado de stake continuo.
     /// @dev Mantem totalVotingPower O(1), sem loop por todos os stakers.
     function activateVotingPower() external {
         require(stakedBalance[msg.sender] > 0, "No staked tokens");
+        require(pendingVotingPower(msg.sender) > 0, "No pending voting power");
         require(hasMaturedStake(msg.sender), "Stake is not mature yet");
 
         uint256 previousVotingPower = activeVotingPower[msg.sender];
@@ -107,6 +109,7 @@ contract TGTStaking is Ownable, ReentrancyGuard {
 
         activeVotingPower[msg.sender] = newVotingPower;
         votingPowerActivatedAt[msg.sender] = block.timestamp;
+        stakeStartedAt[msg.sender] = 0;
 
         emit VotingPowerActivated(msg.sender, newVotingPower, totalActiveVotingPower);
     }
@@ -171,15 +174,24 @@ contract TGTStaking is Ownable, ReentrancyGuard {
         }
     }
 
-    function _clearActiveVotingPower(address account) private {
-        uint256 previousVotingPower = activeVotingPower[account];
-        if (previousVotingPower == 0) {
+    function _decreaseVotingPowerForUnstake(address account, uint256 amount) private {
+        uint256 pendingAmount = pendingVotingPower(account);
+        if (amount <= pendingAmount) {
+            if (amount == pendingAmount) {
+                stakeStartedAt[account] = 0;
+            }
             return;
         }
 
-        activeVotingPower[account] = 0;
-        votingPowerActivatedAt[account] = 0;
-        totalActiveVotingPower -= previousVotingPower;
+        stakeStartedAt[account] = 0;
+
+        uint256 activeReduction = amount - pendingAmount;
+        activeVotingPower[account] -= activeReduction;
+        totalActiveVotingPower -= activeReduction;
+
+        if (activeVotingPower[account] == 0) {
+            votingPowerActivatedAt[account] = 0;
+        }
     }
 
     function _distributeRewards(address funder, uint256 amount, uint256 rewardPerTokenIncrease) private {
@@ -189,13 +201,19 @@ contract TGTStaking is Ownable, ReentrancyGuard {
     }
 
     /// @notice Retorna o poder de voto de uma conta.
-    /// @dev A TgtDao usa esta funcao. O saldo so conta depois de 30 dias seguidos e activateVotingPower.
+    /// @dev A TgtDao usa esta funcao. O saldo so conta depois do delay configurado e activateVotingPower.
     function votingPower(address account) public view returns (uint256) {
         return activeVotingPower[account];
     }
 
+    /// @notice Retorna quanto stake ainda esta pendente para virar voto ativo.
+    /// @dev Esse saldo precisa completar VOTING_POWER_DELAY e depois ser ativado.
+    function pendingVotingPower(address account) public view returns (uint256) {
+        return stakedBalance[account] - activeVotingPower[account];
+    }
+
     /// @notice Retorna o total usado pela TgtDao como base de quorum.
-    /// @dev Usa totalStaked para evitar loops nao limitados ao criar propostas.
+    /// @dev Usa totalActiveVotingPower para evitar loops nao limitados ao criar propostas.
     function totalVotingPower() external view returns (uint256) {
         return totalActiveVotingPower;
     }
@@ -209,17 +227,17 @@ contract TGTStaking is Ownable, ReentrancyGuard {
     /// @notice Retorna quando o stake da conta passa a contar para voto.
     /// @dev Frontends podem usar para exibir o tempo restante ate o poder de voto liberar.
     function votingPowerUnlockTime(address account) external view returns (uint256) {
-        if (stakeStartedAt[account] == 0) {
+        if (pendingVotingPower(account) == 0 || stakeStartedAt[account] == 0) {
             return 0;
         }
 
         return stakeStartedAt[account] + VOTING_POWER_DELAY;
     }
 
-    /// @notice Diz se a conta ja completou 30 dias seguidos de stake.
+    /// @notice Diz se a conta ja completou o delay de stake configurado.
     /// @dev Usado por votingPower para aplicar a regra anti-transferencia entre carteiras.
     function hasMaturedStake(address account) public view returns (bool) {
         uint256 startedAt = stakeStartedAt[account];
-        return startedAt != 0 && block.timestamp >= startedAt + VOTING_POWER_DELAY;
+        return pendingVotingPower(account) > 0 && startedAt != 0 && block.timestamp >= startedAt + VOTING_POWER_DELAY;
     }
 }

@@ -4,12 +4,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { ethers } from "ethers";
 
+import { getNetworkConfig } from "./networks.js";
+
 const ROOT = process.cwd();
+const networkName = process.argv[2] || "sepolia";
+const networkConfig = getNetworkConfig(networkName);
 const DEPLOYMENT_FILE = path.join(
   ROOT,
   "ignition",
   "deployments",
-  "chain-11155111",
+  networkConfig.deploymentFile,
   "deployed_addresses.json",
 );
 
@@ -37,8 +41,20 @@ function requireEnv(name) {
   return value;
 }
 
+function rpcUrl() {
+  return process.env[`${networkConfig.envPrefix}_RPC_URL`]
+    || networkConfig.defaultRpcUrl
+    || requireEnv(`${networkConfig.envPrefix}_RPC_URL`);
+}
+
+function privateKey() {
+  return process.env[`${networkConfig.envPrefix}_PRIVATE_KEY`]
+    || (networkConfig.fallbackPrivateKeyEnv ? process.env[networkConfig.fallbackPrivateKeyEnv] : "")
+    || requireEnv(`${networkConfig.envPrefix}_PRIVATE_KEY`);
+}
+
 function deployedAddress(deployments, contractName) {
-  const value = deployments[`TesserateCoreModule#${contractName}`];
+  const value = deployments[`${networkConfig.moduleName}#${contractName}`];
   if (!value) {
     throw new Error(`Missing deployed address for ${contractName}`);
   }
@@ -58,8 +74,8 @@ async function approveIfNeeded(token, owner, spender, amount) {
 
 async function main() {
   const deployments = readJson(DEPLOYMENT_FILE);
-  const provider = new ethers.JsonRpcProvider(requireEnv("SEPOLIA_RPC_URL"));
-  const signer = new ethers.Wallet(requireEnv("SEPOLIA_PRIVATE_KEY"), provider);
+  const provider = new ethers.JsonRpcProvider(rpcUrl());
+  const signer = new ethers.Wallet(privateKey(), provider);
   const signerAddress = await signer.getAddress();
   const network = await provider.getNetwork();
 
@@ -85,7 +101,7 @@ async function main() {
   const usdc = new ethers.Contract(usdcAddress, ERC20_ABI, signer);
   const usdcDecimals = await usdc.decimals();
 
-  console.log(`network: ${network.name} (${network.chainId})`);
+  console.log(`network: ${networkConfig.name} / ${network.name} (${network.chainId})`);
   console.log(`signer: ${signerAddress}`);
   console.log(`ETH balance: ${ethers.formatEther(await provider.getBalance(signerAddress))}`);
   console.log("");
@@ -130,11 +146,11 @@ async function main() {
   const depositAmountRaw = process.env.SMOKE_DEPOSIT_USDC;
   if (depositAmountRaw) {
     const employee = process.env.SMOKE_EMPLOYEE || signerAddress;
-    const durationDays = BigInt(process.env.SMOKE_DURATION_DAYS || "1");
+    const durationUnits = BigInt(process.env.SMOKE_DURATION_UNITS || process.env.SMOKE_DURATION_DAYS || "1");
     const amount = ethers.parseUnits(depositAmountRaw, usdcDecimals);
     await approveIfNeeded(usdc, signerAddress, addresses.escrow, amount);
 
-    const tx = await escrow.deposit(employee, usdcAddress, amount, durationDays);
+    const tx = await escrow.deposit(employee, usdcAddress, amount, durationUnits);
     console.log(`deposit tx: ${tx.hash}`);
     const receipt = await tx.wait();
 

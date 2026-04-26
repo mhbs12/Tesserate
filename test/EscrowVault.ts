@@ -4,6 +4,10 @@ import { network } from "hardhat";
 const { ethers } = await network.create();
 const ONE_ETHER = 10n ** 18n;
 const RAY = 10n ** 27n;
+const VOTING_POWER_DELAY = 30n * 24n * 60n * 60n;
+const LOCK_UNIT_SECONDS = 24n * 60n * 60n;
+const MIN_LOCK_UNITS = 1n;
+const MAX_LOCK_UNITS = 365n;
 
 async function deploySuite() {
   const [deployer, employer, employee, other] = await ethers.getSigners();
@@ -22,6 +26,7 @@ async function deploySuite() {
     await governanceToken.getAddress(),
     await paymentToken.getAddress(),
     deployer.address,
+    VOTING_POWER_DELAY,
   ]);
 
   await priceOracle.connect(deployer).setPriceFeed(await paymentToken.getAddress(), await paymentTokenFeed.getAddress());
@@ -33,6 +38,9 @@ async function deploySuite() {
     await aavePool.getAddress(),
     await paymentToken.getAddress(),
     await staking.getAddress(),
+    LOCK_UNIT_SECONDS,
+    MIN_LOCK_UNITS,
+    MAX_LOCK_UNITS,
   ]);
 
   await nft.connect(deployer).setEscrowVault(await vault.getAddress());
@@ -77,7 +85,7 @@ async function createServiceAndYield(params: {
     (RAY * (amount + yieldAmount)) / amount,
   );
 
-  await ethers.provider.send("evm_increaseTime", [Number(lockDays) * 24 * 60 * 60]);
+  await ethers.provider.send("evm_increaseTime", [Number(lockDays * LOCK_UNIT_SECONDS)]);
   await ethers.provider.send("evm_mine", []);
 }
 
@@ -283,6 +291,40 @@ describe("EscrowVault", function () {
     expect(stakerBalanceAfter - stakerBalanceBefore).to.equal(expectedStakingRewards);
   });
 
+  it("uses conservative Aave index rounding for tiny yield claims", async function () {
+    const { deployer, employer, employee, governanceToken, paymentToken, aavePool, vault } =
+      await deploySuite();
+    const amount = 1_000n * ONE_ETHER;
+    const theoreticalYield = 1_000n;
+    const withdrawableYield = 999n;
+    const claimableYield = withdrawableYield - 1n;
+    const startIncomeIndex = RAY + 100_000_000_000_000_000_000n;
+    const currentIncomeIndex = (startIncomeIndex * (amount + theoreticalYield)) / amount;
+
+    await vault.connect(deployer).setGovernanceToken(await governanceToken.getAddress());
+    await aavePool.setReserveNormalizedIncome(await paymentToken.getAddress(), startIncomeIndex);
+    await paymentToken.mint(employer.address, amount);
+    await paymentToken.connect(employer).approve(await vault.getAddress(), amount);
+    await vault.connect(employer).deposit(employee.address, await paymentToken.getAddress(), amount, 1n);
+    await aavePool.accrueYield(await paymentToken.getAddress(), withdrawableYield);
+    await aavePool.setReserveNormalizedIncome(await paymentToken.getAddress(), currentIncomeIndex);
+
+    await ethers.provider.send("evm_increaseTime", [Number(LOCK_UNIT_SECONDS)]);
+    await ethers.provider.send("evm_mine", []);
+
+    const expectedFee = 99n;
+    const expectedNet = 899n;
+    expect(await vault.getClaimableYieldGross(0n)).to.equal(claimableYield);
+    expect(await vault.getClaimableYield(0n)).to.equal(expectedNet);
+
+    const employerBalanceBefore = await paymentToken.balanceOf(employer.address);
+    const platformBalanceBefore = await paymentToken.balanceOf(deployer.address);
+    await vault.connect(employer).claimYield(0n);
+
+    expect(await paymentToken.balanceOf(employer.address) - employerBalanceBefore).to.equal(expectedNet);
+    expect(await paymentToken.balanceOf(deployer.address) - platformBalanceBefore).to.equal(expectedFee);
+  });
+
   it("lets owner change the staking rewards contract", async function () {
     const { deployer, employer, employee, governanceToken, paymentToken, aavePool, staking, vault } =
       await deploySuite();
@@ -292,6 +334,7 @@ describe("EscrowVault", function () {
       await governanceToken.getAddress(),
       await paymentToken.getAddress(),
       deployer.address,
+      VOTING_POWER_DELAY,
     ]);
 
     await vault.connect(deployer).setGovernanceToken(await governanceToken.getAddress());
@@ -348,6 +391,39 @@ describe("EscrowVault", function () {
 
     expect(employeeBalanceAfter - employeeBalanceBefore).to.equal(amount);
     expect(await nft.isPaid(0n)).to.equal(true);
+  });
+
+  it("settles pending yield before releasing principal", async function () {
+    const { deployer, employer, employee, nft, governanceToken, paymentToken, aavePool, vault } = await deploySuite();
+    const amount = 1_000n * ONE_ETHER;
+    const yieldAmount = 100n * ONE_ETHER;
+
+    await vault.connect(deployer).setGovernanceToken(await governanceToken.getAddress());
+    await createServiceAndYield({
+      employer,
+      employee,
+      paymentToken,
+      aavePool,
+      vault,
+      amount,
+      yieldAmount,
+      lockDays: 1n,
+    });
+
+    const expectedFee = 10n * ONE_ETHER;
+    const expectedNetYield = 90n * ONE_ETHER;
+    const employeeBalanceBefore = await paymentToken.balanceOf(employee.address);
+    const employerBalanceBefore = await paymentToken.balanceOf(employer.address);
+    const platformBalanceBefore = await paymentToken.balanceOf(deployer.address);
+
+    await vault.connect(employee).releasePayment(0n);
+
+    expect(await nft.isPaid(0n)).to.equal(true);
+    expect(await vault.getClaimableYield(0n)).to.equal(0n);
+    expect(await paymentToken.balanceOf(employee.address) - employeeBalanceBefore).to.equal(amount);
+    expect(await paymentToken.balanceOf(employer.address) - employerBalanceBefore).to.equal(expectedNetYield);
+    expect(await paymentToken.balanceOf(deployer.address) - platformBalanceBefore).to.equal(expectedFee);
+    await expect(vault.connect(employer).claimYield(0n)).to.be.revertedWith("Yield already settled");
   });
 
   it("does not allow yield claim before lock expiration", async function () {

@@ -1,28 +1,27 @@
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 
-const TesserateCoreModule = buildModule("TesserateCoreModule", (m) => {
+const TesserateDemoModule = buildModule("TesserateDemoModule", (m) => {
   const owner = m.getAccount(0);
-  const aavePool = m.getParameter("aavePool");
-  const paymentToken = m.getParameter("paymentToken");
-  const paymentTokenPriceFeed = m.getParameter("paymentTokenPriceFeed");
   const maxPriceAge = m.getParameter("maxPriceAge", 86_400n);
-  const stakingVotingPowerDelay = m.getParameter("stakingVotingPowerDelay", 30n * 24n * 60n * 60n);
-  const escrowDurationUnitSeconds = m.getParameter("escrowDurationUnitSeconds", 24n * 60n * 60n);
+  const stakingVotingPowerDelay = m.getParameter("stakingVotingPowerDelay", 60n);
+  const escrowDurationUnitSeconds = m.getParameter("escrowDurationUnitSeconds", 60n);
   const escrowMinDurationUnits = m.getParameter("escrowMinDurationUnits", 1n);
-  const escrowMaxDurationUnits = m.getParameter("escrowMaxDurationUnits", 365n);
+  const escrowMaxDurationUnits = m.getParameter("escrowMaxDurationUnits", 60n);
   const daoVotingDelay = m.getParameter("daoVotingDelay", 0n);
-  const daoVotingPeriod = m.getParameter("daoVotingPeriod", 259_200n);
+  const daoVotingPeriod = m.getParameter("daoVotingPeriod", 3_600n);
   const daoProposalThreshold = m.getParameter("daoProposalThreshold", 1_000n * 10n ** 18n);
   const daoQuorumBps = m.getParameter("daoQuorumBps", 2_000n);
-  const faucetClaimAmount = m.getParameter("faucetClaimAmount", 2_000n * 10n ** 18n);
-  const faucetCooldown = m.getParameter("faucetCooldown", 86_400n);
+
+  const mockUsdc = m.contract("MockERC20", ["Tesserate Demo USDC", "dUSDC"]);
+  const mockAavePool = m.contract("MockAavePool");
+  const mockUsdcUsdFeed = m.contract("MockAggregatorV3", [8, 100_000_000n]);
 
   const guaranteeNFT = m.contract("GuaranteeNFT", [owner]);
   const yieldRightNFT = m.contract("YieldRightNFT", [owner]);
   const tesserateGovernanceToken = m.contract("TesserateGovernanceToken", [owner, owner]);
   const tgtStaking = m.contract("TGTStaking", [
     tesserateGovernanceToken,
-    paymentToken,
+    mockUsdc,
     owner,
     stakingVotingPowerDelay,
   ]);
@@ -35,18 +34,12 @@ const TesserateCoreModule = buildModule("TesserateCoreModule", (m) => {
     daoQuorumBps,
   ]);
   const chainlinkPriceOracle = m.contract("ChainlinkPriceOracle", [owner, maxPriceAge]);
-  const testTgtFaucet = m.contract("TestTgtFaucet", [
-    tesserateGovernanceToken,
-    owner,
-    faucetClaimAmount,
-    faucetCooldown,
-  ]);
   const escrowVault = m.contract("EscrowVault", [
     guaranteeNFT,
     yieldRightNFT,
     chainlinkPriceOracle,
-    aavePool,
-    paymentToken,
+    mockAavePool,
+    mockUsdc,
     tgtStaking,
     escrowDurationUnitSeconds,
     escrowMinDurationUnits,
@@ -56,9 +49,12 @@ const TesserateCoreModule = buildModule("TesserateCoreModule", (m) => {
   m.call(guaranteeNFT, "setEscrowVault", [escrowVault]);
   m.call(yieldRightNFT, "setEscrowVault", [escrowVault]);
   m.call(escrowVault, "setGovernanceToken", [tesserateGovernanceToken]);
-  m.call(chainlinkPriceOracle, "setPriceFeed", [paymentToken, paymentTokenPriceFeed]);
+  m.call(chainlinkPriceOracle, "setPriceFeed", [mockUsdc, mockUsdcUsdFeed]);
 
   return {
+    mockUsdc,
+    mockAavePool,
+    mockUsdcUsdFeed,
     guaranteeNFT,
     yieldRightNFT,
     tesserateGovernanceToken,
@@ -66,8 +62,7 @@ const TesserateCoreModule = buildModule("TesserateCoreModule", (m) => {
     tgtDao,
     chainlinkPriceOracle,
     escrowVault,
-    testTgtFaucet,
   };
 });
 
-export default TesserateCoreModule;
+export default TesserateDemoModule;

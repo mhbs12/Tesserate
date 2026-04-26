@@ -4,6 +4,9 @@ import { createServer } from "node:http";
 
 const port = Number(process.env.FRONTEND_PORT || 5173);
 const root = resolve("frontend");
+const vendorFiles = {
+  "/vendor/ethers.umd.min.js": resolve("node_modules/ethers/dist/ethers.umd.min.js"),
+};
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
@@ -15,6 +18,11 @@ const contentTypes = {
 
 function resolveRequestPath(url) {
   const pathname = new URL(url, `http://localhost:${port}`).pathname;
+
+  if (vendorFiles[pathname] !== undefined) {
+    return vendorFiles[pathname];
+  }
+
   const requested = pathname === "/" ? "/index.html" : pathname;
   const filePath = normalize(join(root, requested));
 
@@ -36,6 +44,7 @@ createServer((request, response) => {
 
   response.writeHead(200, {
     "content-type": contentTypes[extname(filePath)] || "application/octet-stream",
+    "cache-control": "no-store",
   });
   createReadStream(filePath).pipe(response);
 }).listen(port, () => {

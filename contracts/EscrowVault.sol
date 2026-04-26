@@ -75,6 +75,8 @@ interface IStakingRewards {
 contract EscrowVault is ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
 
+    uint256 private constant RAY = 1e27;
+    uint256 private constant AAVE_ROUNDING_BUFFER = 1;
     uint256 public constant BPS_DENOMINATOR = 10_000;
     uint256 public constant MIN_DEPOSIT_USD_VALUE = 1e18; // 1 USD
     uint256 public constant STAKING_REWARDS_FEE_SHARE_BPS = 5_000; // 50%
@@ -113,6 +115,9 @@ contract EscrowVault is ReentrancyGuard, Ownable {
     IERC20Metadata public immutable usdcToken;
     IStakingRewards public stakingRewardsContract;
     address public platformFeeRecipient;
+    uint256 public immutable durationUnitSeconds;
+    uint256 public immutable minDurationUnits;
+    uint256 public immutable maxDurationUnits;
 
     event GovernanceTokenUpdated(address indexed previousToken, address indexed newToken);
     event PlatformFeeRecipientUpdated(address indexed previousRecipient, address indexed newRecipient);
@@ -154,7 +159,10 @@ contract EscrowVault is ReentrancyGuard, Ownable {
         address _priceOracleAddress,
         address _aavePoolAddress,
         address _usdcTokenAddress,
-        address _stakingRewardsContract
+        address _stakingRewardsContract,
+        uint256 _durationUnitSeconds,
+        uint256 _minDurationUnits,
+        uint256 _maxDurationUnits
     ) Ownable(msg.sender) {
         require(_nftAddress != address(0), "Invalid NFT address");
         require(_yieldRightNftAddress != address(0), "Invalid yield NFT address");
@@ -163,6 +171,9 @@ contract EscrowVault is ReentrancyGuard, Ownable {
         require(_usdcTokenAddress != address(0), "Invalid USDC token address");
         require(_stakingRewardsContract != address(0), "Invalid staking rewards contract");
         require(_stakingRewardsContract.code.length > 0, "Invalid staking rewards contract");
+        require(_durationUnitSeconds > 0, "Invalid duration unit");
+        require(_minDurationUnits > 0, "Invalid min duration");
+        require(_maxDurationUnits >= _minDurationUnits, "Invalid max duration");
 
         nftContract = IGuaranteeNFT(_nftAddress);
         yieldRightNftContract = IYieldRightNFT(_yieldRightNftAddress);
@@ -171,6 +182,9 @@ contract EscrowVault is ReentrancyGuard, Ownable {
         usdcToken = IERC20Metadata(_usdcTokenAddress);
         stakingRewardsContract = IStakingRewards(_stakingRewardsContract);
         platformFeeRecipient = msg.sender;
+        durationUnitSeconds = _durationUnitSeconds;
+        minDurationUnits = _minDurationUnits;
+        maxDurationUnits = _maxDurationUnits;
     }
 
     /// @notice Define qual token TGT sera usado para calcular descontos de taxa.
@@ -260,13 +274,16 @@ contract EscrowVault is ReentrancyGuard, Ownable {
         address _employee,
         address _paymentToken,
         uint256 _amount,
-        uint256 _durationInDays
+        uint256 _durationUnits
     ) external nonReentrant {
         require(_amount > 0, "Amount must be greater than 0");
         require(_employee != address(0), "Invalid employee address");
         require(_paymentToken != address(0), "Invalid payment token address");
         require(_paymentToken == address(usdcToken), "Only USDC payments supported");
-        require(_durationInDays > 0, "Duration must be greater than 0");
+        require(
+            _durationUnits >= minDurationUnits && _durationUnits <= maxDurationUnits,
+            "Invalid lock duration"
+        );
         require(address(governanceToken) != address(0), "Governance token not configured");
         require(
             getDepositUsdValue(_paymentToken, _amount) > MIN_DEPOSIT_USD_VALUE,
@@ -282,7 +299,7 @@ contract EscrowVault is ReentrancyGuard, Ownable {
 
         uint256 guaranteeTokenId = nftContract.mintGuarantee(_employee);
         uint256 yieldRightTokenId = yieldRightNftContract.mintYieldRight(msg.sender);
-        uint256 lockDuration = _durationInDays * 1 days;
+        uint256 lockDuration = _durationUnits * durationUnitSeconds;
         uint256 startIncomeIndex = aavePool.getReserveNormalizedIncome(address(usdcToken));
 
         require(startIncomeIndex > 0, "Invalid income index");
@@ -326,6 +343,9 @@ contract EscrowVault is ReentrancyGuard, Ownable {
         address currentOwner = nftContract.ownerOf(_guaranteeTokenId);
         require(msg.sender == currentOwner, "Only the NFT owner can claim payment");
 
+        address yieldOwner = yieldRightNftContract.ownerOf(service.yieldRightTokenId);
+        _settleYield(_guaranteeTokenId, service.yieldRightTokenId, service, yieldOwner, false);
+
         service.principalReleased = true;
 
         uint256 withdrawnAmount = aavePool.withdraw(service.paymentToken, service.amountLocked, address(this));
@@ -346,53 +366,11 @@ contract EscrowVault is ReentrancyGuard, Ownable {
 
         require(service.employer != address(0), "Service not found");
         require(service.yieldRightTokenId == _yieldRightTokenId, "Invalid yield right token");
+        require(!service.principalReleased, "Yield already settled");
         require(block.timestamp >= service.startTime + service.lockDuration, "Time lock not expired");
         require(msg.sender == yieldRightNftContract.ownerOf(_yieldRightTokenId), "Only the yield NFT owner can claim");
 
-        uint256 claimableYieldGross = _getClaimableYieldGross(service);
-        require(claimableYieldGross > 0, "No yield available");
-        service.claimedYield += claimableYieldGross;
-
-        require(
-            aavePool.withdraw(service.paymentToken, claimableYieldGross, address(this)) >= claimableYieldGross,
-            "Insufficient yield withdrawn"
-        );
-
-        uint256 appliedFeeBps = _getPlatformFeeBps(msg.sender);
-        uint256 totalFeeAmount = Math.mulDiv(claimableYieldGross, appliedFeeBps, BPS_DENOMINATOR);
-        (
-            uint256 platformFeeAmount,
-            uint256 stakingRewardsAmount
-        ) = getFeeSplit(totalFeeAmount);
-        uint256 netAmountClaimed = claimableYieldGross - totalFeeAmount;
-
-        if (stakingRewardsAmount > 0) {
-            if (stakingRewardsContract.totalStaked() == 0) {
-                platformFeeAmount += stakingRewardsAmount;
-                stakingRewardsAmount = 0;
-            } else {
-                IERC20(service.paymentToken).forceApprove(address(stakingRewardsContract), stakingRewardsAmount);
-                stakingRewardsContract.notifyRewardAmount(stakingRewardsAmount);
-            }
-        }
-
-        IERC20(service.paymentToken).safeTransfer(msg.sender, netAmountClaimed);
-        if (platformFeeAmount > 0) {
-            IERC20(service.paymentToken).safeTransfer(platformFeeRecipient, platformFeeAmount);
-        }
-
-        emit YieldClaimed(
-            guaranteeTokenId,
-            _yieldRightTokenId,
-            msg.sender,
-            service.paymentToken,
-            claimableYieldGross,
-            appliedFeeBps,
-            platformFeeAmount,
-            stakingRewardsAmount,
-            netAmountClaimed,
-            service.claimedYield
-        );
+        _settleYield(guaranteeTokenId, _yieldRightTokenId, service, msg.sender, true);
     }
 
     /// @notice Retorna o yield liquido disponivel para o dono atual do YieldRightNFT.
@@ -402,6 +380,9 @@ contract EscrowVault is ReentrancyGuard, Ownable {
         Service storage service = services[guaranteeTokenId];
 
         if (service.employer == address(0)) {
+            return 0;
+        }
+        if (service.principalReleased) {
             return 0;
         }
         if (block.timestamp < service.startTime + service.lockDuration) {
@@ -418,26 +399,85 @@ contract EscrowVault is ReentrancyGuard, Ownable {
     /// @notice Calcula o rendimento bruto acumulado de um Service.
     /// @dev Usado por claimYield, getClaimableYield e getClaimableYieldGross.
     function _getClaimableYieldGross(Service storage service) private view returns (uint256) {
+        if (service.principalReleased) {
+            return 0;
+        }
+
         uint256 currentIncomeIndex = aavePool.getReserveNormalizedIncome(service.paymentToken);
         if (currentIncomeIndex <= service.startIncomeIndex) {
             return 0;
         }
 
-        uint256 grossUnderlying = Math.mulDiv(
-            service.amountLocked,
-            currentIncomeIndex,
-            service.startIncomeIndex
-        );
+        uint256 scaledPrincipal = Math.mulDiv(service.amountLocked, RAY, service.startIncomeIndex);
+        uint256 grossUnderlying = Math.mulDiv(scaledPrincipal, currentIncomeIndex, RAY);
         if (grossUnderlying <= service.amountLocked) {
             return 0;
         }
 
         uint256 accruedYield = grossUnderlying - service.amountLocked;
-        if (accruedYield <= service.claimedYield) {
+        uint256 roundingBuffer = service.startIncomeIndex == RAY ? 0 : AAVE_ROUNDING_BUFFER;
+        if (accruedYield <= service.claimedYield + roundingBuffer) {
             return 0;
         }
 
-        return accruedYield - service.claimedYield;
+        return accruedYield - service.claimedYield - roundingBuffer;
+    }
+
+    function _settleYield(
+        uint256 guaranteeTokenId,
+        uint256 yieldRightTokenId,
+        Service storage service,
+        address recipient,
+        bool requireYield
+    ) private returns (uint256 netAmountClaimed) {
+        uint256 claimableYieldGross = _getClaimableYieldGross(service);
+        if (claimableYieldGross == 0) {
+            require(!requireYield, "No yield available");
+            return 0;
+        }
+
+        service.claimedYield += claimableYieldGross;
+
+        require(
+            aavePool.withdraw(service.paymentToken, claimableYieldGross, address(this)) >= claimableYieldGross,
+            "Insufficient yield withdrawn"
+        );
+
+        uint256 appliedFeeBps = _getPlatformFeeBps(recipient);
+        uint256 totalFeeAmount = Math.mulDiv(claimableYieldGross, appliedFeeBps, BPS_DENOMINATOR);
+        (
+            uint256 platformFeeAmount,
+            uint256 stakingRewardsAmount
+        ) = getFeeSplit(totalFeeAmount);
+        netAmountClaimed = claimableYieldGross - totalFeeAmount;
+
+        if (stakingRewardsAmount > 0) {
+            if (stakingRewardsContract.totalStaked() == 0) {
+                platformFeeAmount += stakingRewardsAmount;
+                stakingRewardsAmount = 0;
+            } else {
+                IERC20(service.paymentToken).forceApprove(address(stakingRewardsContract), stakingRewardsAmount);
+                stakingRewardsContract.notifyRewardAmount(stakingRewardsAmount);
+            }
+        }
+
+        IERC20(service.paymentToken).safeTransfer(recipient, netAmountClaimed);
+        if (platformFeeAmount > 0) {
+            IERC20(service.paymentToken).safeTransfer(platformFeeRecipient, platformFeeAmount);
+        }
+
+        emit YieldClaimed(
+            guaranteeTokenId,
+            yieldRightTokenId,
+            recipient,
+            service.paymentToken,
+            claimableYieldGross,
+            appliedFeeBps,
+            platformFeeAmount,
+            stakingRewardsAmount,
+            netAmountClaimed,
+            service.claimedYield
+        );
     }
 
     /// @notice Calcula a taxa de plataforma conforme o saldo de TGT da conta.
