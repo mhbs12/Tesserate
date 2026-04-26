@@ -3,13 +3,29 @@ import { network } from "hardhat";
 
 const { ethers } = await network.create();
 const ONE_ETHER = 10n ** 18n;
+const THIRTY_DAYS = 30 * 24 * 60 * 60;
+
+async function increaseTime(seconds: number) {
+  await ethers.provider.send("evm_increaseTime", [seconds]);
+  await ethers.provider.send("evm_mine", []);
+}
 
 describe("TGT Staking", function () {
   it("allows staking and unstaking TGT", async function () {
     const [deployer, staker] = await ethers.getSigners();
 
     const token = await ethers.deployContract("TesserateGovernanceToken", [deployer.address, deployer.address]);
-    const staking = await ethers.deployContract("TGTStaking", [await token.getAddress(), deployer.address]);
+    const rewardToken = await ethers.deployContract("MockERC20", ["Mock USDC", "mUSDC"]);
+    const staking = await ethers.deployContract("TGTStaking", [
+      await token.getAddress(),
+      await rewardToken.getAddress(),
+      deployer.address,
+    ]);
+
+    const rewardAmount = 70n * ONE_ETHER;
+    await rewardToken.mint(deployer.address, rewardAmount);
+    await rewardToken.connect(deployer).approve(await staking.getAddress(), rewardAmount);
+    await expect(staking.connect(deployer).fundRewards(rewardAmount)).to.be.revertedWith("No staked tokens");
 
     await token.connect(deployer).transfer(staker.address, 1_000n * ONE_ETHER);
     await token.connect(staker).approve(await staking.getAddress(), 700n * ONE_ETHER);
@@ -17,10 +33,27 @@ describe("TGT Staking", function () {
     await staking.connect(staker).stake(700n * ONE_ETHER);
     expect(await staking.stakedBalance(staker.address)).to.equal(700n * ONE_ETHER);
     expect(await staking.totalStaked()).to.equal(700n * ONE_ETHER);
+    expect(await staking.votingPower(staker.address)).to.equal(0n);
+
+    await increaseTime(THIRTY_DAYS);
+    await staking.connect(staker).activateVotingPower();
+    expect(await staking.votingPower(staker.address)).to.equal(700n * ONE_ETHER);
+    expect(await staking.totalVotingPower()).to.equal(700n * ONE_ETHER);
+
+    await staking.connect(deployer).fundRewards(rewardAmount);
+    expect(await staking.earned(staker.address)).to.equal(rewardAmount);
+
+    const stakerBalanceBeforeClaim = await rewardToken.balanceOf(staker.address);
+    await staking.connect(staker).claimRewards();
+    const stakerBalanceAfterClaim = await rewardToken.balanceOf(staker.address);
+    expect(stakerBalanceAfterClaim - stakerBalanceBeforeClaim).to.equal(rewardAmount);
+    expect(await staking.rewardReserve()).to.equal(0n);
 
     await staking.connect(staker).unstake(250n * ONE_ETHER);
     expect(await staking.stakedBalance(staker.address)).to.equal(450n * ONE_ETHER);
     expect(await staking.totalStaked()).to.equal(450n * ONE_ETHER);
+    expect(await staking.votingPower(staker.address)).to.equal(0n);
+    expect(await staking.totalVotingPower()).to.equal(0n);
   });
 });
 
@@ -29,7 +62,12 @@ describe("TGT DAO", function () {
     const [deployer, alice, bob] = await ethers.getSigners();
 
     const token = await ethers.deployContract("TesserateGovernanceToken", [deployer.address, deployer.address]);
-    const staking = await ethers.deployContract("TGTStaking", [await token.getAddress(), deployer.address]);
+    const rewardToken = await ethers.deployContract("MockERC20", ["Mock USDC", "mUSDC"]);
+    const staking = await ethers.deployContract("TGTStaking", [
+      await token.getAddress(),
+      await rewardToken.getAddress(),
+      deployer.address,
+    ]);
     const dao = await ethers.deployContract("TgtDao", [
       await staking.getAddress(),
       deployer.address,
@@ -47,6 +85,9 @@ describe("TGT DAO", function () {
     await token.connect(bob).approve(await staking.getAddress(), 200n * ONE_ETHER);
     await staking.connect(alice).stake(1_200n * ONE_ETHER);
     await staking.connect(bob).stake(200n * ONE_ETHER);
+    await increaseTime(THIRTY_DAYS);
+    await staking.connect(alice).activateVotingPower();
+    await staking.connect(bob).activateVotingPower();
 
     const proposalData = target.interface.encodeFunctionData("setStoredValue", [99n]);
     await dao.connect(alice).propose(await target.getAddress(), 0n, proposalData, "Set target value to 99");
@@ -68,7 +109,12 @@ describe("TGT DAO", function () {
     const [deployer, alice, bob] = await ethers.getSigners();
 
     const token = await ethers.deployContract("TesserateGovernanceToken", [deployer.address, deployer.address]);
-    const staking = await ethers.deployContract("TGTStaking", [await token.getAddress(), deployer.address]);
+    const rewardToken = await ethers.deployContract("MockERC20", ["Mock USDC", "mUSDC"]);
+    const staking = await ethers.deployContract("TGTStaking", [
+      await token.getAddress(),
+      await rewardToken.getAddress(),
+      deployer.address,
+    ]);
     const dao = await ethers.deployContract("TgtDao", [
       await staking.getAddress(),
       deployer.address,
@@ -86,6 +132,9 @@ describe("TGT DAO", function () {
     await token.connect(bob).approve(await staking.getAddress(), 900n * ONE_ETHER);
     await staking.connect(alice).stake(100n * ONE_ETHER);
     await staking.connect(bob).stake(900n * ONE_ETHER);
+    await increaseTime(THIRTY_DAYS);
+    await staking.connect(alice).activateVotingPower();
+    await staking.connect(bob).activateVotingPower();
 
     const proposalData = target.interface.encodeFunctionData("setStoredValue", [7n]);
     await dao.connect(alice).propose(await target.getAddress(), 0n, proposalData, "Set value to 7");
@@ -97,6 +146,46 @@ describe("TGT DAO", function () {
 
     expect(await dao.quorumReached(1n)).to.equal(false);
     expect(await dao.state(1n)).to.equal(2n);
+  });
+
+  it("does not let the same tokens vote again from another wallet before 30 days", async function () {
+    const [deployer, alice, bob] = await ethers.getSigners();
+
+    const token = await ethers.deployContract("TesserateGovernanceToken", [deployer.address, deployer.address]);
+    const rewardToken = await ethers.deployContract("MockERC20", ["Mock USDC", "mUSDC"]);
+    const staking = await ethers.deployContract("TGTStaking", [
+      await token.getAddress(),
+      await rewardToken.getAddress(),
+      deployer.address,
+    ]);
+    const dao = await ethers.deployContract("TgtDao", [
+      await staking.getAddress(),
+      deployer.address,
+      0n,
+      3n * 24n * 60n * 60n,
+      100n * ONE_ETHER,
+      2_000n,
+    ]);
+    const target = await ethers.deployContract("MockGovernanceTarget");
+
+    await token.connect(deployer).transfer(alice.address, 1_200n * ONE_ETHER);
+    await token.connect(alice).approve(await staking.getAddress(), 1_200n * ONE_ETHER);
+    await staking.connect(alice).stake(1_200n * ONE_ETHER);
+    await increaseTime(THIRTY_DAYS);
+    await staking.connect(alice).activateVotingPower();
+
+    const proposalData = target.interface.encodeFunctionData("setStoredValue", [42n]);
+    await dao.connect(alice).propose(await target.getAddress(), 0n, proposalData, "Set target value to 42");
+    await dao.connect(alice).vote(1n, true);
+
+    await staking.connect(alice).unstake(1_200n * ONE_ETHER);
+    await token.connect(alice).transfer(bob.address, 1_200n * ONE_ETHER);
+    await token.connect(bob).approve(await staking.getAddress(), 1_200n * ONE_ETHER);
+    await staking.connect(bob).stake(1_200n * ONE_ETHER);
+
+    await expect(dao.connect(bob).vote(1n, false)).to.be.revertedWith(
+      "Stake was not mature at proposal start",
+    );
   });
 });
 

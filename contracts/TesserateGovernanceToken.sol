@@ -7,6 +7,8 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 contract TesserateGovernanceToken is ERC20, Ownable {
     uint256 public constant MAX_SUPPLY = 1_000_000 * 10 ** 18;
 
+    /// @notice Cria o token TGT com supply fixo de 1.000.000 tokens.
+    /// @dev Usado no deploy. O saldo de TGT e lido pelo EscrowVault para desconto de taxa e pelo staking para votos.
     constructor(address initialOwner, address initialSupplyRecipient)
         ERC20("Tesserate Governance Token", "TGT")
         Ownable(initialOwner)

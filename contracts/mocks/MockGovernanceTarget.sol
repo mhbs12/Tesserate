@@ -6,6 +6,8 @@ contract MockGovernanceTarget {
 
     event StoredValueUpdated(uint256 newValue);
 
+    /// @notice Altera storedValue.
+    /// @dev Usado pelos testes da TgtDao como alvo de uma proposta executada.
     function setStoredValue(uint256 newValue) external {
         storedValue = newValue;
         emit StoredValueUpdated(newValue);

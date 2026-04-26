@@ -5,8 +5,29 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 interface IStakingVotingPower {
+    /// @notice Retorna quanto uma conta tem travado em staking.
+    /// @dev Exposto pelo staking, mas a TgtDao usa votingPower para aplicar maturidade de 30 dias.
     function stakedBalance(address account) external view returns (uint256);
-    function totalStaked() external view returns (uint256);
+
+    /// @notice Retorna quando a conta iniciou o periodo atual de stake.
+    /// @dev Usado pela TgtDao para garantir que o stake ja era maduro no inicio da proposta.
+    function stakeStartedAt(address account) external view returns (uint256);
+
+    /// @notice Retorna quanto do stake ja esta ativo para voto.
+    /// @dev So conta saldo que ficou 30 dias seguidos em stake e foi ativado no TGTStaking.
+    function votingPower(address account) external view returns (uint256);
+
+    /// @notice Retorna quando o poder de voto foi ativado pela ultima vez.
+    /// @dev Usado para impedir ativacao depois do inicio da proposta.
+    function votingPowerActivatedAt(address account) external view returns (uint256);
+
+    /// @notice Retorna o atraso necessario para stake virar poder de voto.
+    /// @dev Usado pela TgtDao para validar a mesma janela de maturidade do staking.
+    function VOTING_POWER_DELAY() external view returns (uint256);
+
+    /// @notice Retorna a base de quorum da DAO.
+    /// @dev No TGTStaking atual, usa totalActiveVotingPower para evitar loops nao limitados.
+    function totalVotingPower() external view returns (uint256);
 }
 
 contract TgtDao is Ownable, ReentrancyGuard {
@@ -65,6 +86,8 @@ contract TgtDao is Ownable, ReentrancyGuard {
     event ProposalThresholdUpdated(uint256 previousThreshold, uint256 newThreshold);
     event QuorumBpsUpdated(uint256 previousQuorumBps, uint256 newQuorumBps);
 
+    /// @notice Cria a DAO ligada ao contrato de staking.
+    /// @dev Usado no deploy. A DAO usa o staking para calcular permissao de proposta, votos e quorum.
     constructor(
         address _stakingAddress,
         address initialOwner,
@@ -84,12 +107,16 @@ contract TgtDao is Ownable, ReentrancyGuard {
         quorumBps = _quorumBps;
     }
 
+    /// @notice Altera o atraso entre criar uma proposta e ela ficar ativa.
+    /// @dev Chamado pelo owner para ajustar a regra de governanca.
     function setVotingDelay(uint256 newVotingDelay) external onlyOwner {
         uint256 previousDelay = votingDelay;
         votingDelay = newVotingDelay;
         emit VotingDelayUpdated(previousDelay, newVotingDelay);
     }
 
+    /// @notice Altera por quanto tempo uma proposta fica aberta para voto.
+    /// @dev Chamado pelo owner para ajustar a regra de governanca.
     function setVotingPeriod(uint256 newVotingPeriod) external onlyOwner {
         require(newVotingPeriod > 0, "Invalid voting period");
         uint256 previousPeriod = votingPeriod;
@@ -97,12 +124,16 @@ contract TgtDao is Ownable, ReentrancyGuard {
         emit VotingPeriodUpdated(previousPeriod, newVotingPeriod);
     }
 
+    /// @notice Altera o minimo de stake necessario para criar proposta.
+    /// @dev Chamado pelo owner. propose usa esse valor contra staking.votingPower(msg.sender).
     function setProposalThreshold(uint256 newProposalThreshold) external onlyOwner {
         uint256 previousThreshold = proposalThreshold;
         proposalThreshold = newProposalThreshold;
         emit ProposalThresholdUpdated(previousThreshold, newProposalThreshold);
     }
 
+    /// @notice Altera o quorum minimo em basis points.
+    /// @dev Chamado pelo owner. quorumReached usa esse valor sobre a base de quorum salva no snapshot.
     function setQuorumBps(uint256 newQuorumBps) external onlyOwner {
         require(newQuorumBps <= BPS_DENOMINATOR, "Invalid quorum bps");
         uint256 previousQuorumBps = quorumBps;
@@ -110,6 +141,8 @@ contract TgtDao is Ownable, ReentrancyGuard {
         emit QuorumBpsUpdated(previousQuorumBps, newQuorumBps);
     }
 
+    /// @notice Cria uma proposta para chamar outro contrato se a votacao passar.
+    /// @dev Chamado por quem tem stake suficiente. Nos testes chama MockGovernanceTarget.setStoredValue.
     function propose(
         address target,
         uint256 value,
@@ -117,7 +150,7 @@ contract TgtDao is Ownable, ReentrancyGuard {
         string calldata description
     ) external returns (uint256) {
         require(target != address(0), "Invalid target");
-        require(staking.stakedBalance(msg.sender) >= proposalThreshold, "Insufficient voting power to propose");
+        require(staking.votingPower(msg.sender) >= proposalThreshold, "Insufficient mature voting power to propose");
 
         uint256 proposalId = ++proposalCount;
         Proposal storage proposal = _proposals[proposalId];
@@ -129,13 +162,15 @@ contract TgtDao is Ownable, ReentrancyGuard {
         proposal.description = description;
         proposal.startTime = block.timestamp + votingDelay;
         proposal.endTime = proposal.startTime + votingPeriod;
-        proposal.quorumSnapshot = staking.totalStaked();
+        proposal.quorumSnapshot = staking.totalVotingPower();
 
         _emitProposalCreated(proposalId);
 
         return proposalId;
     }
 
+    /// @notice Emite o evento de proposta criada.
+    /// @dev Funcao interna usada apenas por propose para manter o corpo da funcao menor.
     function _emitProposalCreated(uint256 proposalId) internal {
         Proposal storage proposal = _proposals[proposalId];
         emit ProposalCreated(
@@ -150,14 +185,28 @@ contract TgtDao is Ownable, ReentrancyGuard {
         );
     }
 
+    /// @notice Vota a favor ou contra uma proposta ativa.
+    /// @dev Chamado por usuarios com TGT maduro em staking. O stake precisa ter 30 dias seguidos.
     function vote(uint256 proposalId, bool support) external {
         Proposal storage proposal = _proposals[proposalId];
         require(proposal.id != 0, "Proposal not found");
         require(state(proposalId) == ProposalState.Active, "Proposal is not active");
         require(!hasVoted[proposalId][msg.sender], "Already voted");
 
-        uint256 weight = staking.stakedBalance(msg.sender);
-        require(weight > 0, "No voting power");
+        uint256 stakeStartedAt = staking.stakeStartedAt(msg.sender);
+        require(
+            stakeStartedAt != 0 && stakeStartedAt + staking.VOTING_POWER_DELAY() <= proposal.startTime,
+            "Stake was not mature at proposal start"
+        );
+
+        uint256 votingPowerActivatedAt = staking.votingPowerActivatedAt(msg.sender);
+        require(
+            votingPowerActivatedAt != 0 && votingPowerActivatedAt <= proposal.startTime,
+            "Voting power was not active at proposal start"
+        );
+
+        uint256 weight = staking.votingPower(msg.sender);
+        require(weight > 0, "No mature voting power");
 
         hasVoted[proposalId][msg.sender] = true;
 
@@ -170,6 +219,8 @@ contract TgtDao is Ownable, ReentrancyGuard {
         emit VoteCast(proposalId, msg.sender, support, weight);
     }
 
+    /// @notice Executa a chamada configurada na proposta aprovada.
+    /// @dev Chamado depois do fim da votacao, apenas se state(proposalId) for Succeeded.
     function execute(uint256 proposalId) external nonReentrant returns (bytes memory) {
         Proposal storage proposal = _proposals[proposalId];
         require(proposal.id != 0, "Proposal not found");
@@ -184,6 +235,8 @@ contract TgtDao is Ownable, ReentrancyGuard {
         return returndata;
     }
 
+    /// @notice Cancela uma proposta ainda nao executada.
+    /// @dev Chamado pelo proposer ou pelo owner quando a proposta nao deve seguir.
     function cancel(uint256 proposalId) external {
         Proposal storage proposal = _proposals[proposalId];
         require(proposal.id != 0, "Proposal not found");
@@ -194,6 +247,8 @@ contract TgtDao is Ownable, ReentrancyGuard {
         emit ProposalCanceled(proposalId, msg.sender);
     }
 
+    /// @notice Diz se uma proposta atingiu o quorum minimo.
+    /// @dev Usado por state para decidir se a proposta foi derrotada por falta de votos.
     function quorumReached(uint256 proposalId) public view returns (bool) {
         Proposal storage proposal = _proposals[proposalId];
         if (proposal.id == 0) {
@@ -205,6 +260,8 @@ contract TgtDao is Ownable, ReentrancyGuard {
         return totalVotes >= requiredVotes;
     }
 
+    /// @notice Retorna o estado atual de uma proposta.
+    /// @dev Usado por vote, execute, frontends e testes para saber se a proposta esta ativa/aprovada/etc.
     function state(uint256 proposalId) public view returns (ProposalState) {
         Proposal storage proposal = _proposals[proposalId];
         require(proposal.id != 0, "Proposal not found");
@@ -231,6 +288,8 @@ contract TgtDao is Ownable, ReentrancyGuard {
         return ProposalState.Succeeded;
     }
 
+    /// @notice Retorna os dados numericos principais de uma proposta.
+    /// @dev Funcao read-only para frontend/backend sem retornar bytes/string grandes.
     function getProposalSummary(
         uint256 proposalId
     )
@@ -266,6 +325,8 @@ contract TgtDao is Ownable, ReentrancyGuard {
         );
     }
 
+    /// @notice Retorna o payload executavel e a descricao da proposta.
+    /// @dev Funcao read-only usada por frontend/backend para mostrar ou inspecionar a chamada proposta.
     function getProposalPayload(
         uint256 proposalId
     ) external view returns (bytes memory data, string memory description) {
@@ -274,5 +335,7 @@ contract TgtDao is Ownable, ReentrancyGuard {
         return (proposal.data, proposal.description);
     }
 
+    /// @notice Permite que a DAO receba ETH para executar propostas com value.
+    /// @dev Usado se alguma proposta futura precisar enviar ETH junto da chamada.
     receive() external payable {}
 }
