@@ -6,6 +6,9 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
+    "deploy:sepolia": "hardhat ignition deploy ignition/modules/TesserateCore.ts --network sepolia --parameters ignition/parameters/sepolia.json",
+    "smoke:sepolia": "node scripts/smoke-sepolia.js",
+    "frontend:start": "node scripts/frontend-server.js",
     "backend:start": "node backend/server.js"
   },
   "keywords": [],

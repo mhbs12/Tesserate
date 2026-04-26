@@ -1,5 +1,6 @@
+import "dotenv/config";
 import hardhatToolboxMochaEthersPlugin from "@nomicfoundation/hardhat-toolbox-mocha-ethers";
-import { defineConfig } from "hardhat/config";
+import { configVariable, defineConfig } from "hardhat/config";
 
 const networks = {
   hardhatMainnet: {
@@ -72,6 +73,11 @@ export default defineConfig({
       remixCompat: remixCompatProfile,
       remixNoOptimizer: remixNoOptimizerProfile,
       remix020NoOptimizer: remix020NoOptimizerProfile,
+    },
+  },
+  verify: {
+    etherscan: {
+      apiKey: configVariable("ETHERSCAN_API_KEY"),
     },
   },
   networks,
