@@ -185,6 +185,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderContracts();
   setProposalPresetDefaults();
   render();
+  if (!isEthersLoaded()) {
+    showMessage("Biblioteca ethers nao carregou. Verifique se frontend/vendor/ethers.umd.min.js foi publicado.", "error");
+  }
   startRealtimeClock();
   startDashboardAutoRefresh();
 });
@@ -215,7 +218,7 @@ async function loadDeploymentConfig() {
     state.usdcAddress = appConfig.external.usdc || state.usdcAddress;
 
     const deployedFaucetAddress = contracts.faucet?.address || "";
-    if (ethers.isAddress(deployedFaucetAddress)) {
+    if (isValidAddress(deployedFaucetAddress)) {
       state.faucetAddress = deployedFaucetAddress;
       localStorage.setItem(FAUCET_STORAGE_KEY, deployedFaucetAddress);
     } else {
@@ -312,6 +315,11 @@ function setView(view) {
 }
 
 async function connectWallet() {
+  if (!isEthersLoaded()) {
+    showMessage("Biblioteca ethers nao carregou. Republique o frontend com frontend/vendor/ethers.umd.min.js.", "error");
+    return;
+  }
+
   if (!window.ethereum) {
     showMessage("Abra esta pagina em um navegador com MetaMask.", "error");
     return;
@@ -755,7 +763,7 @@ async function readYieldAmounts(c, tokenId, service, owner) {
 }
 
 async function estimateGrossYield(service) {
-  if (!ethers.isAddress(appConfig.external?.aavePool)) return 0n;
+  if (!isValidAddress(appConfig.external?.aavePool)) return 0n;
   if (service.principalReleased) return 0n;
 
   const aavePool = new ethers.Contract(appConfig.external.aavePool, aavePoolAbi, state.provider);
@@ -1135,7 +1143,7 @@ function render() {
   els.chainValue.textContent = connected ? state.chainId.toString() : "-";
   els.usdcValue.textContent = state.usdcAddress || appConfig.external.usdc || "-";
   els.connectButton.textContent = connected ? "Reconectar" : "Conectar wallet";
-  els.connectButton.disabled = busy;
+  els.connectButton.disabled = busy || !isEthersLoaded();
   els.disconnectButton.classList.toggle("hidden", !connected);
   els.disconnectButton.disabled = busy || !connected;
   els.switchButton.textContent = appConfig.network.name;
@@ -1634,6 +1642,14 @@ function clearCountdownElement(element, text) {
   element.textContent = text;
 }
 
+function isEthersLoaded() {
+  return typeof ethers?.isAddress === "function";
+}
+
+function isValidAddress(address) {
+  return isEthersLoaded() && ethers.isAddress(address);
+}
+
 function isTargetNetwork() {
   return state.chainId === BigInt(appConfig.network.chainId);
 }
@@ -1647,7 +1663,7 @@ function hasDeployment() {
     contracts.staking?.address,
     contracts.escrow?.address,
     contracts.dao?.address,
-  ].every((address) => ethers.isAddress(address));
+  ].every((address) => isValidAddress(address));
 }
 
 function requireWallet() {
@@ -1677,7 +1693,7 @@ function parseIntegerInRange(value, min, max, label) {
 }
 
 function assertAddress(value, label) {
-  if (!ethers.isAddress(value)) throw new Error(`${label} invalido.`);
+  if (!isValidAddress(value)) throw new Error(`${label} invalido.`);
 }
 
 function sameAddress(left, right) {
