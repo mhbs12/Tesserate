@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tesserate dApp</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-mark">T</div>
+          <div>
+            <h1>Tesserate</h1>
+            <p>Base Sepolia dApp</p>
+          </div>
+        </div>
+
+        <nav class="nav-list" aria-label="Navegacao principal">
+          <button class="nav-item active" data-view="overview" type="button">Overview</button>
+          <button class="nav-item" data-view="staking" type="button">Staking</button>
+          <button class="nav-item" data-view="escrow" type="button">Escrow</button>
+          <button class="nav-item" data-view="nfts" type="button">Meus NFTs</button>
+          <button class="nav-item" data-view="dao" type="button">DAO</button>
+          <button class="nav-item" data-view="contracts" type="button">Contratos</button>
+        </nav>
+
+        <div class="sidebar-status">
+          <span id="connectionDot" class="status-dot"></span>
+          <div>
+            <strong id="connectionLabel">Wallet desconectada</strong>
+            <small id="networkLabel">Base Sepolia</small>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main-area">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Tesserate protocol</p>
+            <h2 id="viewTitle">Overview</h2>
+          </div>
+          <div class="wallet-actions">
+            <a class="button-link secondary" href="https://portal.cdp.coinbase.com/products/faucet" target="_blank" rel="noreferrer">Faucet ETH</a>
+            <button id="refreshButton" class="secondary" type="button" disabled>Atualizar</button>
+            <button id="switchButton" class="secondary hidden" type="button">Base Sepolia</button>
+            <button id="disconnectButton" class="secondary hidden" type="button">Desconectar</button>
+            <button id="connectButton" type="button">Conectar wallet</button>
+          </div>
+        </header>
+
+        <section id="message" class="message hidden"></section>
+
+        <section class="view active" data-view-panel="overview">
+          <div class="metrics-grid">
+            <article class="metric-card">
+              <span>Saldo TGT</span>
+              <strong id="metricBalance">-</strong>
+            </article>
+            <article class="metric-card">
+              <span>Seu stake</span>
+              <strong id="metricStaked">-</strong>
+            </article>
+            <article class="metric-card">
+              <span>Rewards USDC</span>
+              <strong id="metricRewards">-</strong>
+            </article>
+            <article class="metric-card">
+              <span>Fee tier</span>
+              <strong id="metricFee">-</strong>
+            </article>
+            <article class="metric-card">
+              <span>Voto ativo</span>
+              <strong id="metricVotingPower">-</strong>
+            </article>
+            <article class="metric-card">
+              <span>Stake total</span>
+              <strong id="metricTotalStaked">-</strong>
+            </article>
+          </div>
+
+          <div class="split-grid">
+            <article class="panel">
+              <div class="panel-heading">
+                <h3>Carteira</h3>
+                <span id="walletBadge" class="badge">desconectada</span>
+              </div>
+              <dl class="details-list">
+                <div>
+                  <dt>Conta</dt>
+                  <dd id="accountValue">-</dd>
+                </div>
+                <div>
+                  <dt>Rede</dt>
+                  <dd id="chainValue">-</dd>
+                </div>
+                <div>
+                  <dt>Voting unlock</dt>
+                  <dd id="unlockValue">-</dd>
+                </div>
+                <div>
+                  <dt>USDC configurado</dt>
+                  <dd id="usdcValue">-</dd>
+                </div>
+              </dl>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <h3>Acao rapida</h3>
+              </div>
+              <div class="quick-actions">
+                <button data-jump="staking" type="button">Stake TGT</button>
+                <button data-jump="escrow" type="button">Criar escrow</button>
+                <button data-jump="nfts" type="button">Meus NFTs</button>
+                <button data-jump="dao" type="button">Abrir DAO</button>
+                <button data-jump="contracts" type="button">Ver contratos</button>
+                <a class="button-link secondary" href="https://portal.cdp.coinbase.com/products/faucet" target="_blank" rel="noreferrer">Coletar ETH Base</a>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <h3>Modo teste</h3>
+                <span class="badge">minutos</span>
+              </div>
+              <dl class="details-list">
+                <div>
+                  <dt>Escrow</dt>
+                  <dd>1 a 60 minutos</dd>
+                </div>
+                <div>
+                  <dt>Voting power</dt>
+                  <dd>1 minuto apos stake</dd>
+                </div>
+                <div>
+                  <dt>DAO</dt>
+                  <dd>votacao de 2 minutos</dd>
+                </div>
+                <div>
+                  <dt>Faucet TGT</dt>
+                  <dd>cooldown de 1 minuto</dd>
+                </div>
+              </dl>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" data-view-panel="staking">
+          <div class="split-grid">
+            <article class="panel">
+              <div class="panel-heading">
+                <h3>Stake</h3>
+                <span class="badge">TGT</span>
+              </div>
+              <form id="stakeForm" class="form-grid">
+                <label>
+                  Quantidade
+                  <input id="stakeAmount" inputmode="decimal" placeholder="1000" />
+                </label>
+                <button type="submit">Aprovar e fazer stake</button>
+              </form>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <h3>Unstake</h3>
+                <span class="badge muted">TGT</span>
+              </div>
+              <form id="unstakeForm" class="form-grid">
+                <label>
+                  Quantidade
+                  <input id="unstakeAmount" inputmode="decimal" placeholder="250" />
+                </label>
+                <button type="submit">Fazer unstake</button>
+              </form>
+            </article>
+          </div>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <h3>Voting power e rewards</h3>
+            </div>
+            <div class="toolbar">
+              <button id="activateVotingButton" type="button">Ativar voting power</button>
+              <button id="claimRewardsButton" class="secondary" type="button">Claim rewards</button>
+            </div>
+            <dl class="details-list staking-status">
+              <div>
+                <dt>Rewards disponiveis</dt>
+                <dd id="stakingPanelRewards">-</dd>
+              </div>
+              <div>
+                <dt>Reserva rewards</dt>
+                <dd id="stakingPanelRewardReserve">-</dd>
+              </div>
+              <div>
+                <dt>Atualizado</dt>
+                <dd id="stakingPanelRewardUpdated">-</dd>
+              </div>
+              <div>
+                <dt>Seu stake</dt>
+                <dd id="stakingPanelStaked">-</dd>
+              </div>
+              <div>
+                <dt>Voto ativo</dt>
+                <dd id="stakingPanelVotingPower">-</dd>
+              </div>
+              <div>
+                <dt>Stake pendente</dt>
+                <dd id="stakingPanelPendingVotingPower">-</dd>
+              </div>
+              <div>
+                <dt>Libera em</dt>
+                <dd id="stakingPanelUnlockAt">-</dd>
+              </div>
+              <div>
+                <dt>Tempo restante</dt>
+                <dd id="stakingPanelTimeLeft">-</dd>
+              </div>
+            </dl>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <h3>Faucet de teste</h3>
+              <span class="badge">Base Sepolia</span>
+            </div>
+            <div class="form-grid">
+              <label>
+                Endereco do faucet
+                <input id="faucetAddress" placeholder="0x..." />
+              </label>
+              <div class="toolbar">
+                <button id="saveFaucetButton" class="secondary" type="button">Salvar faucet</button>
+                <button id="refreshFaucetButton" class="secondary" type="button">Atualizar faucet</button>
+                <button id="claimFaucetButton" type="button">Claim TGT</button>
+              </div>
+              <dl class="details-list compact">
+                <div>
+                  <dt>Saldo faucet</dt>
+                  <dd id="faucetBalanceValue">-</dd>
+                </div>
+                <div>
+                  <dt>Claim por wallet</dt>
+                  <dd id="faucetClaimAmountValue">-</dd>
+                </div>
+                <div>
+                  <dt>Proximo claim</dt>
+                  <dd id="faucetNextClaimValue">-</dd>
+                </div>
+              </dl>
+            </div>
+          </article>
+        </section>
+
+        <section class="view" data-view-panel="escrow">
+          <div class="split-grid">
+            <article class="panel">
+              <div class="panel-heading">
+                <h3>Novo escrow</h3>
+                <span class="badge">USDC</span>
+              </div>
+              <div class="usdc-tools">
+                <strong>USDC configurado: Aave Base Sepolia</strong>
+                <span class="helper-text">
+                  Este deploy aceita apenas o USDC 0xba50... Use o faucet da Aave em Base Sepolia para pegar o token correto.
+                </span>
+                <a id="aaveFaucetButton" class="button-link" href="https://app.aave.com/faucet/" target="_blank" rel="noreferrer">Abrir faucet USDC</a>
+              </div>
+              <form id="depositForm" class="form-grid">
+                <label>
+                  Funcionario
+                  <input id="employeeAddress" placeholder="0x..." />
+                </label>
+                <label>
+                  Valor
+                  <input id="depositAmount" inputmode="decimal" placeholder="100" />
+                </label>
+                <label>
+                  Duracao em minutos
+                  <input id="durationUnits" inputmode="numeric" type="number" min="1" max="60" value="5" />
+                </label>
+                <div class="toolbar">
+                  <button id="previewDepositButton" class="secondary" type="button">Preview USD</button>
+                  <button type="submit">Aprovar e depositar</button>
+                </div>
+              </form>
+              <div class="inline-result">
+                <span>Valor USD</span>
+                <strong id="depositUsdValue">-</strong>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <h3>Consultar escrow</h3>
+              </div>
+              <form id="serviceLookupForm" class="form-grid">
+                <label>
+                  Guarantee token ID
+                  <input id="guaranteeTokenId" inputmode="numeric" placeholder="1" />
+                </label>
+                <label>
+                  YieldRight token ID
+                  <input id="yieldTokenId" inputmode="numeric" placeholder="1" />
+                </label>
+                <div class="toolbar">
+                  <button class="secondary" type="submit">Consultar</button>
+                </div>
+              </form>
+              <dl class="details-list compact">
+                <div>
+                  <dt>Yield disponivel</dt>
+                  <dd id="claimableYieldValue">-</dd>
+                </div>
+                <div>
+                  <dt>Valor principal</dt>
+                  <dd id="principalAmountValue">-</dd>
+                </div>
+                <div>
+                  <dt>Libera em</dt>
+                  <dd id="serviceUnlockValue">-</dd>
+                </div>
+                <div>
+                  <dt>Tempo restante</dt>
+                  <dd id="serviceTimeLeftValue">-</dd>
+                </div>
+                <div>
+                  <dt>Dono GuaranteeNFT</dt>
+                  <dd id="guaranteeOwnerValue">-</dd>
+                </div>
+                <div>
+                  <dt>Dono YieldNFT</dt>
+                  <dd id="yieldOwnerValue">-</dd>
+                </div>
+                <div>
+                  <dt>Status principal</dt>
+                  <dd id="principalStatusValue">-</dd>
+                </div>
+              </dl>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" data-view-panel="nfts">
+          <div class="split-grid">
+            <article class="panel">
+              <div class="panel-heading">
+                <h3>Guarantee NFTs</h3>
+                <span id="guaranteeNftCount" class="badge muted">0 NFTs</span>
+              </div>
+              <div id="guaranteeNftList" class="nft-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <h3>Yield NFTs</h3>
+                <span id="yieldNftCount" class="badge muted">0 NFTs</span>
+              </div>
+              <div id="yieldNftList" class="nft-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" data-view-panel="dao">
+          <article class="panel">
+            <div class="panel-heading">
+              <h3>Status DAO</h3>
+              <span id="daoReadyBadge" class="badge muted">sem voto ativo</span>
+            </div>
+            <dl class="details-list compact">
+              <div>
+                <dt>Voting power ativo</dt>
+                <dd id="daoVotingPowerValue">-</dd>
+              </div>
+              <div>
+                <dt>Stake pendente</dt>
+                <dd id="daoPendingVotingPowerValue">-</dd>
+              </div>
+              <div>
+                <dt>Threshold para criar</dt>
+                <dd id="daoThresholdValue">-</dd>
+              </div>
+              <div>
+                <dt>Quorum</dt>
+                <dd id="daoQuorumValue">-</dd>
+              </div>
+              <div>
+                <dt>Periodo de votacao</dt>
+                <dd id="daoVotingPeriodValue">-</dd>
+              </div>
+            </dl>
+            <div class="quick-actions dao-quick-actions">
+              <button data-jump="staking" type="button">Abrir staking</button>
+            </div>
+          </article>
+
+          <div class="split-grid">
+            <article class="panel">
+              <div class="panel-heading">
+                <h3>Criar proposal</h3>
+                <span id="proposalCountBadge" class="badge">0 propostas</span>
+              </div>
+              <form id="proposalForm" class="form-grid">
+                <label>
+                  Tipo
+                  <select id="proposalPreset">
+                    <option value="signal">Proposta sinalizadora</option>
+                    <option value="custom">Chamada customizada</option>
+                  </select>
+                </label>
+                <label>
+                  Target
+                  <input id="proposalTarget" />
+                </label>
+                <label>
+                  Valor ETH
+                  <input id="proposalValue" inputmode="decimal" value="0" />
+                </label>
+                <label>
+                  Calldata
+                  <textarea id="proposalData" placeholder="2500"></textarea>
+                </label>
+                <label>
+                  Descricao
+                  <textarea id="proposalDescription">Alterar parametro da DAO</textarea>
+                </label>
+                <button id="createProposalButton" type="submit">Criar proposal</button>
+              </form>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <h3>Gerenciar proposal</h3>
+                <span id="proposalStateBadge" class="badge muted">sem consulta</span>
+              </div>
+              <form id="proposalLookupForm" class="form-grid">
+                <label>
+                  Proposal ID
+                  <input id="proposalId" inputmode="numeric" value="1" />
+                </label>
+                <button class="secondary" type="submit">Consultar proposal</button>
+              </form>
+              <div class="toolbar">
+                <button id="voteForButton" type="button">Votar a favor</button>
+                <button id="voteAgainstButton" class="danger" type="button">Votar contra</button>
+                <button id="executeProposalButton" class="secondary" type="button">Executar</button>
+                <button id="cancelProposalButton" class="secondary" type="button">Cancelar</button>
+              </div>
+              <dl class="details-list compact">
+                <div>
+                  <dt>Proposer</dt>
+                  <dd id="proposalProposer">-</dd>
+                </div>
+                <div>
+                  <dt>Target</dt>
+                  <dd id="proposalTargetValue">-</dd>
+                </div>
+                <div>
+                  <dt>Votos</dt>
+                  <dd id="proposalVotes">-</dd>
+                </div>
+                <div>
+                  <dt>Periodo</dt>
+                  <dd id="proposalPeriod">-</dd>
+                </div>
+                <div>
+                  <dt>Descricao</dt>
+                  <dd id="proposalDescriptionValue">-</dd>
+                </div>
+              </dl>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" data-view-panel="contracts">
+          <article class="panel">
+            <div class="panel-heading">
+              <h3>Deployments Base Sepolia</h3>
+            </div>
+            <div id="contractsTable" class="contracts-table"></div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script src="/vendor/ethers.umd.min.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

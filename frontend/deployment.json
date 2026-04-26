@@ -1,0 +1,56 @@
+{
+  "network": {
+    "name": "Base Sepolia",
+    "chainId": 84532,
+    "hexChainId": "0x14a34",
+    "rpcUrls": [
+      "https://sepolia.base.org"
+    ],
+    "blockExplorerUrls": [
+      "https://sepolia.basescan.org"
+    ],
+    "explorerAddressUrl": "https://sepolia.basescan.org/address/"
+  },
+  "external": {
+    "aavePool": "0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27",
+    "usdc": "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f",
+    "usdcPriceFeed": "0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165",
+    "aaveFaucetUrl": "https://app.aave.com/faucet/"
+  },
+  "contracts": {
+    "priceOracle": {
+      "label": "ChainlinkPriceOracle",
+      "address": "0x932b80193477530A109108413f1b928a2C39D413"
+    },
+    "guaranteeNft": {
+      "label": "GuaranteeNFT",
+      "address": "0xB0768Dca22fb3C1B4DAdAc21902C019459E4A99F",
+      "startBlock": 40729583
+    },
+    "governanceToken": {
+      "label": "TesserateGovernanceToken",
+      "address": "0xf5535cA66aedd684E782D216B2182dE480c1e0BD"
+    },
+    "yieldRightNft": {
+      "label": "YieldRightNFT",
+      "address": "0x5a172C4438E91AFa5cff5cC80d749f753eeA57e9",
+      "startBlock": 40729585
+    },
+    "staking": {
+      "label": "TGTStaking",
+      "address": "0x4bDFEA9Edd3Fea2F489f67Cb8D625A4fD8694b65"
+    },
+    "escrow": {
+      "label": "EscrowVault",
+      "address": "0xFBB1E514A9ce0D201209A175936ebeb73EEB1d0D"
+    },
+    "dao": {
+      "label": "TgtDao",
+      "address": "0x47269034e3B78dF1806a63752B4CD59d96CA2Df4"
+    },
+    "faucet": {
+      "label": "TestTgtFaucet",
+      "address": "0x37C77bFC3CFcfE6c494954EBA56889fF3b8DD5Ec"
+    }
+  }
+}
