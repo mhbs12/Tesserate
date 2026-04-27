@@ -13,6 +13,11 @@ let appConfig = {
     aaveFaucetUrl: "https://app.aave.com/faucet/",
     usdc: "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f",
   },
+  indexing: {
+    logChunkSize: 5_000,
+    minLogChunkSize: 250,
+    retryDelayMs: 200,
+  },
 };
 
 const FAUCET_STORAGE_KEY = "tesserate:base-sepolia:faucet-address";
@@ -208,6 +213,10 @@ async function loadDeploymentConfig() {
       external: {
         ...appConfig.external,
         ...deployment.external,
+      },
+      indexing: {
+        ...appConfig.indexing,
+        ...deployment.indexing,
       },
     };
     contracts = {
@@ -632,10 +641,8 @@ async function loadWalletNfts() {
   const c = getContracts();
   state.nfts.error = "";
 
-  const [guaranteeIds, yieldIds] = await Promise.all([
-    findOwnedTokenIds(c.guaranteeNft, state.account, contracts.guaranteeNft?.startBlock),
-    findOwnedTokenIds(c.yieldRightNft, state.account, contracts.yieldRightNft?.startBlock),
-  ]);
+  const guaranteeIds = await findOwnedTokenIds(c.guaranteeNft, state.account, contracts.guaranteeNft?.startBlock);
+  const yieldIds = await findOwnedTokenIds(c.yieldRightNft, state.account, contracts.yieldRightNft?.startBlock);
 
   const [guaranteeItems, yieldItems] = await Promise.all([
     Promise.all(guaranteeIds.map((tokenId) => loadGuaranteeNftItem(c, tokenId))),
@@ -651,10 +658,8 @@ async function loadWalletNfts() {
 }
 
 async function findOwnedTokenIds(contract, account, startBlock) {
-  const [receivedLogs, sentLogs] = await Promise.all([
-    queryTransferLogs(contract, contract.filters.Transfer(null, account), startBlock),
-    queryTransferLogs(contract, contract.filters.Transfer(account, null), startBlock),
-  ]);
+  const receivedLogs = await queryTransferLogs(contract, contract.filters.Transfer(null, account), startBlock);
+  const sentLogs = await queryTransferLogs(contract, contract.filters.Transfer(account, null), startBlock);
 
   const candidates = new Set();
   [...receivedLogs, ...sentLogs].forEach((log) => {
@@ -682,10 +687,29 @@ async function queryTransferLogs(contract, filter, startBlock) {
   if (firstBlock > latestBlock) return [];
 
   const logs = [];
-  const chunkSize = 50_000;
-  for (let fromBlock = firstBlock; fromBlock <= latestBlock; fromBlock += chunkSize) {
+  const preferredChunkSize = getPositiveInteger(appConfig.indexing?.logChunkSize, 5_000);
+  const minChunkSize = Math.min(
+    preferredChunkSize,
+    getPositiveInteger(appConfig.indexing?.minLogChunkSize, 250),
+  );
+  const retryDelayMs = getPositiveInteger(appConfig.indexing?.retryDelayMs, 200);
+  let chunkSize = preferredChunkSize;
+  let fromBlock = firstBlock;
+
+  while (fromBlock <= latestBlock) {
     const toBlock = Math.min(latestBlock, fromBlock + chunkSize - 1);
-    logs.push(...await contract.queryFilter(filter, fromBlock, toBlock));
+    try {
+      logs.push(...await contract.queryFilter(filter, fromBlock, toBlock));
+      fromBlock = toBlock + 1;
+      chunkSize = Math.min(preferredChunkSize, chunkSize * 2);
+    } catch (err) {
+      if (!isRpcPayloadTooLargeError(err) || chunkSize <= minChunkSize) {
+        throw err;
+      }
+
+      chunkSize = Math.max(minChunkSize, Math.floor(chunkSize / 2));
+      await sleep(retryDelayMs);
+    }
   }
 
   return logs;
@@ -1706,6 +1730,11 @@ function compareBigInt(left, right) {
   return 0;
 }
 
+function getPositiveInteger(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
 function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -1767,8 +1796,8 @@ function shortAddress(address) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-function readError(err) {
-  const text = [
+function getErrorText(err) {
+  return [
     err?.shortMessage,
     err?.reason,
     err?.message,
@@ -1788,6 +1817,29 @@ function readError(err) {
       return String(item);
     }
   }).filter(Boolean).join(" ");
+}
+
+function isRpcPayloadTooLargeError(err) {
+  const statuses = [
+    err?.data?.httpStatus,
+    err?.data?.data?.httpStatus,
+    err?.error?.data?.httpStatus,
+    err?.error?.data?.data?.httpStatus,
+    err?.info?.error?.data?.httpStatus,
+    err?.info?.error?.data?.data?.httpStatus,
+  ].map(Number);
+
+  if (statuses.includes(413)) return true;
+
+  const text = getErrorText(err).toLowerCase();
+  return text.includes('"httpstatus":413')
+    || text.includes("http status 413")
+    || text.includes("request entity too large")
+    || text.includes("payload too large");
+}
+
+function readError(err) {
+  const text = getErrorText(err);
 
   const aaveCodeMatch = text.match(/execution reverted: ["']?(\d+)["']?/i);
   if (aaveCodeMatch) {
@@ -1805,6 +1857,10 @@ function readError(err) {
 
   if (text.includes("0x47bc4b2c")) {
     return aaveErrorMessages["0x47bc4b2c"];
+  }
+
+  if (isRpcPayloadTooLargeError(err)) {
+    return "RPC da wallet recusou uma consulta de eventos muito grande (HTTP 413). O app tentou reduzir o tamanho da busca; se persistir, use um RPC dedicado ou diminua indexing.logChunkSize no deployment.json.";
   }
 
   return err?.shortMessage || err?.reason || err?.message || "Erro desconhecido.";
