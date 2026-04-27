@@ -19,15 +19,29 @@ pasta `backend` nem API HTTP separada neste repo.
 | NFT ERC-721 ou ERC-1155 | `GuaranteeNFT` e `YieldRightNFT`, ambos ERC-721 |
 | Contrato de staking com recompensa | `contracts/TGTStaking.sol`, com rewards em USDC |
 | Governanca simples | `contracts/TgtDao.sol`, baseada no poder de voto do staking |
-| Oraculo | `contracts/ChainlinkPriceOracle.sol`, usando feeds Chainlink |
+| Oraculo Chainlink | `contracts/ChainlinkPriceOracle.sol`, com feed USDC/USD, stale check e conversao para USD |
 | Integracao Web3 | Mini frontend em `frontend/index.html` + `frontend/app.js` |
 | Deploy em testnet | Deploy na Base Sepolia, com enderecos e links abaixo |
 | README explicativo | Este arquivo |
-| Relatorio tecnico, video e auditoria | Artefatos externos exigidos pelo PDF |
+| Relatorio de auditoria | `docs/AUDIT_REPORT.md` e outputs em `reports/audit/raw/` |
+| Relatorio tecnico | `docs/U1C5O1T1_MuriloHenriqueBeraldo.pdf` |
+| Video demonstrativo | Artefato externo exigido pelo PDF |
 
 ## Problema
 
-O Tesserate resolve um caso de escrow entre empresa e funcionario:
+O Tesserate resolve um caso de escrow entre empresa e funcionario: como reservar
+um pagamento futuro de forma verificavel, sem depender apenas de controles
+internos da empresa, e ao mesmo tempo permitir que o capital parado gere
+rendimento enquanto o prazo de lock ainda nao acabou.
+
+Em um fluxo tradicional, o funcionario precisa confiar que a empresa realmente
+separou o valor prometido, e a empresa perde eficiencia financeira ao deixar
+capital imobilizado sem rendimento. O Tesserate transforma esse acordo em uma
+operacao on-chain: a empresa deposita USDC no `EscrowVault`, o valor e enviado
+para a Aave, o funcionario recebe um `GuaranteeNFT` com direito ao principal e a
+empresa recebe um `YieldRightNFT` com direito ao rendimento.
+
+Resumo do fluxo economico:
 
 - a empresa deposita um valor em USDC;
 - o funcionario recebe um NFT que representa o direito ao principal;
@@ -36,6 +50,34 @@ O Tesserate resolve um caso de escrow entre empresa e funcionario:
   TGT;
 - parte da taxa financia recompensas para stakers;
 - stakers com poder de voto maduro podem participar da DAO.
+
+### Vantagens para o funcionario
+
+| Vantagem | Como o protocolo entrega |
+| --- | --- |
+| Garantia verificavel | O valor do principal fica depositado em contrato, com estado consultavel on-chain. |
+| Direito tokenizado | O `GuaranteeNFT` representa o direito do funcionario ao salario/principal daquele escrow especifico. |
+| Regra objetiva de liberacao | Depois do prazo de lock definido pela empresa, o resgate segue a regra do contrato, nao uma aprovacao manual. |
+| Transparencia | O funcionario pode acompanhar contrato, NFT, valores e tempo restante pelo frontend ou pelo explorer. |
+| Menos assimetria de informacao | A empresa nao apenas promete separar o valor; ela precisa depositar o USDC para criar o escrow. |
+
+### Vantagens para a empresa
+
+| Vantagem | Como o protocolo entrega |
+| --- | --- |
+| Previsibilidade financeira | A empresa define valor, wallet do funcionario e tempo de lock no momento de criar o escrow. |
+| Uso produtivo do capital | Enquanto o principal fica reservado ao funcionario, o USDC e depositado na Aave para gerar rendimento. |
+| Direito separado ao yield | O `YieldRightNFT` registra que o rendimento acumulado pertence a empresa. |
+| Incentivo por TGT | Saldo/stake de TGT reduz a taxa aplicada sobre o yield, indo de 10% ate 5%. |
+| Automacao e rastreabilidade | Eventos, NFTs e contratos publicados em testnet tornam o fluxo mais auditavel do que um controle interno fechado. |
+
+### Equilibrio do modelo
+
+O protocolo separa o que cada parte precisa receber: o funcionario tem direito
+ao principal reservado, enquanto a empresa mantem o direito ao rendimento gerado
+durante o lock. A taxa da plataforma incide somente sobre o yield, nao sobre o
+salario/principal do funcionario. Metade dessa taxa vai para os stakers de TGT
+como recompensa em USDC, criando um incentivo para participacao no protocolo.
 
 ## Arquitetura
 
@@ -87,7 +129,7 @@ flowchart LR
   Platform["50% da taxa<br/>plataforma"]:::platform
 
   Stakers -->|"stake TGT"| Staking
-  Staking --->|"poder de voto com tempo minimo de stake"| Dao
+  Staking --->|"poder de voto maduro, com tempo minimo de stake"| Dao
   Stakers -->|"propoem e votam"| Dao
   Staking -.->|"stake conta para<br/>desconto de taxa"| Escrow
   Escrow --> YieldClaim --> Fee
@@ -106,6 +148,26 @@ flowchart LR
 O mini frontend em `frontend/` assina transacoes na wallet do usuario para o
 `EscrowVault`, `TGTStaking` e `TgtDao`. O `EscrowVault` usa o
 `ChainlinkPriceOracle` para validar o valor em USD do deposito.
+
+### Oraculo Chainlink no fluxo
+
+O requisito de oraculo esta implementado pelo contrato
+`contracts/ChainlinkPriceOracle.sol`. Ele funciona como uma camada propria do
+protocolo em cima dos feeds da Chainlink:
+
+- o owner configura qual feed atende cada token com `setPriceFeed(token, feed)`;
+- no deploy da Base Sepolia, o USDC usado pelo `EscrowVault` foi ligado ao feed
+  USDC/USD da Chainlink;
+- `getLatestPrice(token)` chama `latestRoundData()` no feed configurado;
+- o contrato rejeita preco invalido, timestamp invalido e preco stale usando
+  `maxPriceAge`;
+- `getUsdValue(token, amount, tokenDecimals)` normaliza o valor do token e o
+  preco do feed para escala `1e18`, usando `Math.mulDiv`.
+
+No `EscrowVault`, o oraculo e usado em `getDepositUsdValue(...)` e no
+`deposit(...)` para exigir que o deposito valha mais de `1 USD` antes de criar o
+escrow. Assim, a regra economica do protocolo nao depende de valor informado
+pelo usuario nem de calculo off-chain.
 
 ## Escolha dos padroes
 
@@ -197,10 +259,13 @@ usuario.
 
 ### `contracts/ChainlinkPriceOracle.sol`
 
-- Registra feed por token.
-- Le preco via Chainlink `latestRoundData`.
-- Valida `maxPriceAge` para evitar preco stale.
-- Converte valores para USD em escala `1e18`.
+- Implementa o requisito de oraculo do trabalho.
+- Registra feed Chainlink por token com `setPriceFeed(token, feed)`.
+- Le preco via `AggregatorV3Interface.latestRoundData()`.
+- Valida feed configurado, preco maior que zero, timestamp valido e
+  `maxPriceAge` para evitar preco stale.
+- Converte valores para USD em escala `1e18` com `getUsdValue(...)`.
+- E consumido pelo `EscrowVault` para validar o minimo de deposito em USD.
 
 ### `contracts/TestTgtFaucet.sol`
 
@@ -289,6 +354,8 @@ contratos na Base Sepolia. Ele permite:
 - resgatar principal e rendimento;
 - criar, consultar, votar, executar e cancelar propostas da DAO;
 - simular valor em USD e criar escrow.
+
+Deploy publico na Vercel: [https://tesserate.vercel.app/](https://tesserate.vercel.app/)
 
 Subir o frontend local:
 
@@ -480,9 +547,8 @@ O codigo aplica os pontos tecnicos pedidos no PDF:
 - validacao de preco stale no oraculo;
 - testes automatizados com Hardhat.
 
-O PDF tambem pede auditoria com Slither, Mythril e Hardhat. Este repo inclui a
-suite Hardhat; o relatorio simples de auditoria com ferramentas externas deve
-ser entregue como artefato separado.
+O PDF tambem pede auditoria com Slither, Mythril e Hardhat. O relatorio simples
+esta em `docs/AUDIT_REPORT.md`, com os outputs brutos em `reports/audit/raw/`.
 
 ## Artefatos de entrega do PDF
 
@@ -493,8 +559,9 @@ O PDF pede:
 3. Video demonstrativo de 5 a 10 minutos.
 4. Relatorio de auditoria.
 
-Este README documenta o repositorio e o deploy. O relatorio tecnico, o video e o
-relatorio de auditoria sao entregas separadas.
+Este README documenta o repositorio e o deploy. O relatorio tecnico esta em
+`docs/U1C5O1T1_MuriloHenriqueBeraldo.pdf` e o relatorio de auditoria esta em
+`docs/AUDIT_REPORT.md`. O video demonstrativo e uma entrega separada.
 
 ## Observacoes
 

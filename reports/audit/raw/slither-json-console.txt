@@ -1,0 +1,154 @@
+'solc --version' running
+'solc @openzeppelin=node_modules/@openzeppelin @chainlink=node_modules/@chainlink contracts/ChainlinkPriceOracle.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --optimize --via-ir --allow-paths .,/mnt/c/Users/mhbs/Documents/Tesserate,/mnt/c/Users/mhbs/Documents/Tesserate/contracts,/mnt/c/Users/mhbs/Documents/Tesserate/node_modules' running
+'solc --version' running
+'solc @openzeppelin=node_modules/@openzeppelin @chainlink=node_modules/@chainlink contracts/EscrowVault.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --optimize --via-ir --allow-paths .,/mnt/c/Users/mhbs/Documents/Tesserate,/mnt/c/Users/mhbs/Documents/Tesserate/contracts,/mnt/c/Users/mhbs/Documents/Tesserate/node_modules' running
+'solc --version' running
+'solc @openzeppelin=node_modules/@openzeppelin @chainlink=node_modules/@chainlink contracts/GuaranteeNFT.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --optimize --via-ir --allow-paths .,/mnt/c/Users/mhbs/Documents/Tesserate,/mnt/c/Users/mhbs/Documents/Tesserate/contracts,/mnt/c/Users/mhbs/Documents/Tesserate/node_modules' running
+'solc --version' running
+'solc @openzeppelin=node_modules/@openzeppelin @chainlink=node_modules/@chainlink contracts/TesserateGovernanceToken.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --optimize --via-ir --allow-paths .,/mnt/c/Users/mhbs/Documents/Tesserate,/mnt/c/Users/mhbs/Documents/Tesserate/contracts,/mnt/c/Users/mhbs/Documents/Tesserate/node_modules' running
+'solc --version' running
+'solc @openzeppelin=node_modules/@openzeppelin @chainlink=node_modules/@chainlink contracts/TestTgtFaucet.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --optimize --via-ir --allow-paths .,/mnt/c/Users/mhbs/Documents/Tesserate,/mnt/c/Users/mhbs/Documents/Tesserate/contracts,/mnt/c/Users/mhbs/Documents/Tesserate/node_modules' running
+'solc --version' running
+'solc @openzeppelin=node_modules/@openzeppelin @chainlink=node_modules/@chainlink contracts/TgtDao.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --optimize --via-ir --allow-paths .,/mnt/c/Users/mhbs/Documents/Tesserate,/mnt/c/Users/mhbs/Documents/Tesserate/contracts,/mnt/c/Users/mhbs/Documents/Tesserate/node_modules' running
+'solc --version' running
+'solc @openzeppelin=node_modules/@openzeppelin @chainlink=node_modules/@chainlink contracts/TGTStaking.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --optimize --via-ir --allow-paths .,/mnt/c/Users/mhbs/Documents/Tesserate,/mnt/c/Users/mhbs/Documents/Tesserate/contracts,/mnt/c/Users/mhbs/Documents/Tesserate/node_modules' running
+'solc --version' running
+'solc @openzeppelin=node_modules/@openzeppelin @chainlink=node_modules/@chainlink contracts/YieldRightNFT.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --optimize --via-ir --allow-paths .,/mnt/c/Users/mhbs/Documents/Tesserate,/mnt/c/Users/mhbs/Documents/Tesserate/contracts,/mnt/c/Users/mhbs/Documents/Tesserate/node_modules' running
+
+Detector: unused-return
+ChainlinkPriceOracle.getLatestPrice(address) (contracts/ChainlinkPriceOracle.sol#47-58) ignores return value by (None,answer,None,answerUpdatedAt,None) = feed.latestRoundData() (contracts/ChainlinkPriceOracle.sol#51)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#unused-return
+
+Detector: timestamp
+ChainlinkPriceOracle.getLatestPrice(address) (contracts/ChainlinkPriceOracle.sol#47-58) uses timestamp for comparisons
+	Dangerous comparisons:
+	- require(bool,string)(block.timestamp - answerUpdatedAt <= maxPriceAge,Stale oracle price) (contracts/ChainlinkPriceOracle.sol#55)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+
+Detector: reentrancy-no-eth
+Reentrancy in EscrowVault.releasePayment(uint256) (contracts/EscrowVault.sol#336-359):
+	External calls:
+	- _settleYield(_guaranteeTokenId,service.yieldRightTokenId,service,yieldOwner,false) (contracts/EscrowVault.sol#347)
+		- require(bool,string)(aavePool.withdraw(service.paymentToken,claimableYieldGross,address(this)) >= claimableYieldGross,Insufficient yield withdrawn) (contracts/EscrowVault.sol#441-444)
+		- stakingRewardsContract.notifyRewardAmount(stakingRewardsAmount) (contracts/EscrowVault.sol#460)
+	State variables written after the call(s):
+	- service.principalReleased = true (contracts/EscrowVault.sol#349)
+	EscrowVault.services (contracts/EscrowVault.sol#107) can be used in cross function reentrancies:
+	- EscrowVault.getClaimableYield(uint256) (contracts/EscrowVault.sol#378-397)
+	- EscrowVault.getClaimableYieldGross(uint256) (contracts/EscrowVault.sol#247-259)
+	- EscrowVault.services (contracts/EscrowVault.sol#107)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#reentrancy-vulnerabilities-2
+
+Detector: reentrancy-benign
+Reentrancy in EscrowVault.deposit(address,address,uint256,uint256) (contracts/EscrowVault.sol#273-332):
+	External calls:
+	- aavePool.supply(address(usdcToken),_amount,address(this),0) (contracts/EscrowVault.sol#298)
+	- guaranteeTokenId = nftContract.mintGuarantee(_employee) (contracts/EscrowVault.sol#300)
+	- yieldRightTokenId = yieldRightNftContract.mintYieldRight(msg.sender) (contracts/EscrowVault.sol#301)
+	State variables written after the call(s):
+	- services[guaranteeTokenId] = Service({employer:msg.sender,employee:_employee,paymentToken:address(usdcToken),amountLocked:_amount,startTime:block.timestamp,lockDuration:lockDuration,yieldRightTokenId:yieldRightTokenId,startIncomeIndex:startIncomeIndex,claimedYield:0,principalReleased:false}) (contracts/EscrowVault.sol#307-318)
+	- yieldRightToGuaranteeToken[yieldRightTokenId] = guaranteeTokenId (contracts/EscrowVault.sol#320)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#reentrancy-vulnerabilities-3
+
+Detector: timestamp
+EscrowVault.getClaimableYieldGross(uint256) (contracts/EscrowVault.sol#247-259) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp < service.startTime + service.lockDuration (contracts/EscrowVault.sol#254)
+EscrowVault.releasePayment(uint256) (contracts/EscrowVault.sol#336-359) uses timestamp for comparisons
+	Dangerous comparisons:
+	- require(bool,string)(service.employer != address(0),Service not found) (contracts/EscrowVault.sol#339)
+	- require(bool,string)(! service.principalReleased,Payment already released) (contracts/EscrowVault.sol#340)
+	- require(bool,string)(block.timestamp >= service.startTime + service.lockDuration,Time lock not expired) (contracts/EscrowVault.sol#341)
+	- require(bool,string)(withdrawnAmount >= service.amountLocked,Insufficient amount withdrawn) (contracts/EscrowVault.sol#352)
+EscrowVault.claimYield(uint256) (contracts/EscrowVault.sol#363-374) uses timestamp for comparisons
+	Dangerous comparisons:
+	- require(bool,string)(service.employer != address(0),Service not found) (contracts/EscrowVault.sol#367)
+	- require(bool,string)(service.yieldRightTokenId == _yieldRightTokenId,Invalid yield right token) (contracts/EscrowVault.sol#368)
+	- require(bool,string)(! service.principalReleased,Yield already settled) (contracts/EscrowVault.sol#369)
+	- require(bool,string)(block.timestamp >= service.startTime + service.lockDuration,Time lock not expired) (contracts/EscrowVault.sol#370)
+EscrowVault.getClaimableYield(uint256) (contracts/EscrowVault.sol#378-397) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp < service.startTime + service.lockDuration (contracts/EscrowVault.sol#388)
+EscrowVault._settleYield(uint256,uint256,EscrowVault.Service,address,bool) (contracts/EscrowVault.sol#426-481) uses timestamp for comparisons
+	Dangerous comparisons:
+	- require(bool,string)(aavePool.withdraw(service.paymentToken,claimableYieldGross,address(this)) >= claimableYieldGross,Insufficient yield withdrawn) (contracts/EscrowVault.sol#441-444)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+
+Detector: naming-convention
+Parameter EscrowVault.setGovernanceToken(address)._governanceTokenAddress (contracts/EscrowVault.sol#192) is not in mixedCase
+Parameter EscrowVault.setPlatformFeeRecipient(address)._newRecipient (contracts/EscrowVault.sol#203) is not in mixedCase
+Parameter EscrowVault.setStakingRewardsContract(address)._newContract (contracts/EscrowVault.sol#214) is not in mixedCase
+Parameter EscrowVault.getClaimableYieldGross(uint256)._yieldRightTokenId (contracts/EscrowVault.sol#247) is not in mixedCase
+Parameter EscrowVault.getDepositUsdValue(address,uint256)._paymentToken (contracts/EscrowVault.sol#263) is not in mixedCase
+Parameter EscrowVault.getDepositUsdValue(address,uint256)._amount (contracts/EscrowVault.sol#263) is not in mixedCase
+Parameter EscrowVault.deposit(address,address,uint256,uint256)._employee (contracts/EscrowVault.sol#274) is not in mixedCase
+Parameter EscrowVault.deposit(address,address,uint256,uint256)._paymentToken (contracts/EscrowVault.sol#275) is not in mixedCase
+Parameter EscrowVault.deposit(address,address,uint256,uint256)._amount (contracts/EscrowVault.sol#276) is not in mixedCase
+Parameter EscrowVault.deposit(address,address,uint256,uint256)._durationUnits (contracts/EscrowVault.sol#277) is not in mixedCase
+Parameter EscrowVault.releasePayment(uint256)._guaranteeTokenId (contracts/EscrowVault.sol#336) is not in mixedCase
+Parameter EscrowVault.claimYield(uint256)._yieldRightTokenId (contracts/EscrowVault.sol#363) is not in mixedCase
+Parameter EscrowVault.getClaimableYield(uint256)._yieldRightTokenId (contracts/EscrowVault.sol#378) is not in mixedCase
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#conformance-to-solidity-naming-conventions
+
+Detector: immutable-states
+EscrowVault.aavePool (contracts/EscrowVault.sol#113) should be immutable 
+EscrowVault.nftContract (contracts/EscrowVault.sol#110) should be immutable 
+EscrowVault.priceOracle (contracts/EscrowVault.sol#114) should be immutable 
+EscrowVault.yieldRightNftContract (contracts/EscrowVault.sol#111) should be immutable 
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#state-variables-that-could-be-declared-immutable
+
+Detector: naming-convention
+Parameter GuaranteeNFT.setEscrowVault(address)._escrow (contracts/GuaranteeNFT.sol#25) is not in mixedCase
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#conformance-to-solidity-naming-conventions
+
+Detector: timestamp
+TestTgtFaucet.claim() (contracts/TestTgtFaucet.sol#38-47) uses timestamp for comparisons
+	Dangerous comparisons:
+	- require(bool,string)(block.timestamp >= nextClaimAt,Cooldown active) (contracts/TestTgtFaucet.sol#40)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+
+Detector: timestamp
+TgtDao.vote(uint256,bool) (contracts/TgtDao.sol#182-206) uses timestamp for comparisons
+	Dangerous comparisons:
+	- require(bool,string)(proposal.id != 0,Proposal not found) (contracts/TgtDao.sol#184)
+	- require(bool,string)(votingPowerActivatedAt != 0 && votingPowerActivatedAt <= proposal.startTime,Voting power was not active at proposal start) (contracts/TgtDao.sol#189-192)
+TgtDao.execute(uint256) (contracts/TgtDao.sol#210-222) uses timestamp for comparisons
+	Dangerous comparisons:
+	- require(bool,string)(proposal.id != 0,Proposal not found) (contracts/TgtDao.sol#212)
+TgtDao.cancel(uint256) (contracts/TgtDao.sol#226-234) uses timestamp for comparisons
+	Dangerous comparisons:
+	- require(bool,string)(proposal.id != 0,Proposal not found) (contracts/TgtDao.sol#228)
+	- require(bool,string)(! proposal.executed,Proposal already executed) (contracts/TgtDao.sol#229)
+	- require(bool,string)(msg.sender == proposal.proposer || msg.sender == owner(),Not authorized) (contracts/TgtDao.sol#230)
+TgtDao.state(uint256) (contracts/TgtDao.sol#251-275) uses timestamp for comparisons
+	Dangerous comparisons:
+	- require(bool,string)(proposal.id != 0,Proposal not found) (contracts/TgtDao.sol#253)
+	- block.timestamp < proposal.startTime (contracts/TgtDao.sol#261)
+	- block.timestamp <= proposal.endTime (contracts/TgtDao.sol#264)
+TgtDao.getProposalSummary(uint256) (contracts/TgtDao.sol#279-312) uses timestamp for comparisons
+	Dangerous comparisons:
+	- require(bool,string)(proposal.id != 0,Proposal not found) (contracts/TgtDao.sol#298)
+TgtDao.getProposalPayload(uint256) (contracts/TgtDao.sol#316-322) uses timestamp for comparisons
+	Dangerous comparisons:
+	- require(bool,string)(proposal.id != 0,Proposal not found) (contracts/TgtDao.sol#320)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+
+Detector: low-level-calls
+Low level call in TgtDao.execute(uint256) (contracts/TgtDao.sol#210-222):
+	- (success,returndata) = proposal.target.call{value: proposal.value}(proposal.data) (contracts/TgtDao.sol#217)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#low-level-calls
+
+Detector: timestamp
+TGTStaking.hasMaturedStake(address) (contracts/TGTStaking.sol#239-242) uses timestamp for comparisons
+	Dangerous comparisons:
+	- pendingVotingPower(account) > 0 && startedAt != 0 && block.timestamp >= startedAt + VOTING_POWER_DELAY (contracts/TGTStaking.sol#241)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+
+Detector: naming-convention
+Variable TGTStaking.VOTING_POWER_DELAY (contracts/TGTStaking.sol#14) is not in mixedCase
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#conformance-to-solidity-naming-conventions
+
+Detector: naming-convention
+Parameter YieldRightNFT.setEscrowVault(address)._escrow (contracts/YieldRightNFT.sol#22) is not in mixedCase
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#conformance-to-solidity-naming-conventions
+contracts analyzed (100 contracts with 101 detectors), 38 result(s) found
