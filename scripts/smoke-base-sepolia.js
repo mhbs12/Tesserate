@@ -7,7 +7,7 @@ import { ethers } from "ethers";
 import { getNetworkConfig } from "./networks.js";
 
 const ROOT = process.cwd();
-const networkName = process.argv[2] || "sepolia";
+const networkName = process.argv[2] || "base-sepolia";
 const networkConfig = getNetworkConfig(networkName);
 const DEPLOYMENT_FILE = path.join(
   ROOT,

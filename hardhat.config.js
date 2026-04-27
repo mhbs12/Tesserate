@@ -13,17 +13,8 @@ const networks = {
   },
 };
 
-if (process.env.SEPOLIA_RPC_URL && process.env.SEPOLIA_PRIVATE_KEY) {
-  networks.sepolia = {
-    type: "http",
-    chainType: "l1",
-    url: process.env.SEPOLIA_RPC_URL,
-    accounts: [process.env.SEPOLIA_PRIVATE_KEY],
-  };
-}
-
 const baseSepoliaRpcUrl = process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org";
-const baseSepoliaPrivateKey = process.env.BASE_SEPOLIA_PRIVATE_KEY || process.env.SEPOLIA_PRIVATE_KEY;
+const baseSepoliaPrivateKey = process.env.BASE_SEPOLIA_PRIVATE_KEY;
 
 if (baseSepoliaPrivateKey) {
   networks.baseSepolia = {
