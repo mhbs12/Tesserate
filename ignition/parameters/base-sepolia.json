@@ -1,0 +1,14 @@
+{
+  "TesserateCoreModule": {
+    "aavePool": "0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27",
+    "paymentToken": "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f",
+    "paymentTokenPriceFeed": "0xd30e2101a97dcbAeBCBC04F14C3f624E67A35165",
+    "stakingVotingPowerDelay": 60,
+    "escrowDurationUnitSeconds": 60,
+    "escrowMinDurationUnits": 1,
+    "escrowMaxDurationUnits": 60,
+    "daoVotingDelay": 0,
+    "daoVotingPeriod": 120,
+    "faucetCooldown": 60
+  }
+}
