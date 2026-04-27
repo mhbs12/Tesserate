@@ -14,7 +14,6 @@
 /.gas-snapshot
 /snapshots
 /ignition/deployments
-/ignition/parameters/*.json
 !/ignition/parameters/*.example.json
 
 # Environment files
